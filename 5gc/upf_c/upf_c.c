@@ -55,43 +55,213 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+// #include "lib/n4_pfcp_handler.h"
+#include "lib/pfcp_message.h"
+#include "lib/pfcp_node.h"
+#include "lib/pfcp_xact.h"
+#include "lib/upf_context.h"
+
 #define NF_TAG "upf_c"
 
+void ProcessN4Message(struct rte_mbuf *pkt) {
+    PfcpHeader *pfcpHeader = NULL;
+
+    pfcpHeader = (PfcpHeader *) rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, 16 + 8 + 20);
+
+    Bufblk rcvd_msg;
+    rcvd_msg.buf = pfcpHeader;
+    rcvd_msg.size = pkt->pkt_len - (16 + 8 + 20);
+    rcvd_msg.len = pkt->pkt_len - (16 + 8 + 20);
+
+	Status status;
+	Bufblk *bufBlk = NULL;
+	Bufblk *recvBufBlk = &rcvd_msg;
+	PfcpNode *upf; //TODO(vivek)
+	PfcpMessage *pfcpMessage = NULL;
+	PfcpXact *xact = NULL;
+	UpfSession *session = NULL;
+
+	UTLT_Assert(recvBufBlk, return, "recv buffer no data");
+	bufBlk = BufblkAlloc(1, sizeof(PfcpMessage));
+	UTLT_Assert(bufBlk, goto freeRecvBuf, "create buffer error");
+	pfcpMessage = bufBlk->buf;
+	UTLT_Assert(pfcpMessage, goto freeBuf, "pfcpMessage assigned error");
+
+	status = PfcpParseMessage(pfcpMessage, recvBufBlk);
+	UTLT_Assert(status == STATUS_OK, goto freeBuf, "PfcpParseMessage error");
+
+#if 0
+    if (pfcpMessage->header.seidP) {
+
+		// if SEID presence
+		if (!pfcpMessage->header.seid) {
+			// without SEID
+			if (pfcpMessage->header.type == PFCP_SESSION_ESTABLISHMENT_REQUEST) {
+				session = UpfSessionAddByMessage(pfcpMessage);
+			} else {
+				UTLT_Assert(0, goto freeBuf,
+						"no SEID but not SESSION ESTABLISHMENT");
+			}
+		} else {
+			// with SEID
+			session = UpfSessionFindBySeid(pfcpMessage->header.seid);
+		}
+
+		UTLT_Assert(session, goto freeBuf,
+				"do not find / establish session");
+
+		if (pfcpMessage->header.type != PFCP_SESSION_REPORT_RESPONSE) {
+			session->pfcpNode = upf;
+		}
+
+		status = PfcpXactReceive(session->pfcpNode,
+				&pfcpMessage->header, &xact);
+		UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
+	} else {
+		status = PfcpXactReceive(upf, &pfcpMessage->header, &xact);
+		UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
+	}
+#endif
+
+	switch (pfcpMessage->header.type) {
+#if 0
+		case PFCP_HEARTBEAT_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP heartbeat request");
+			UpfN4HandleHeartbeatRequest(xact, &pfcpMessage->heartbeatRequest);
+			break;
+		case PFCP_HEARTBEAT_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP heartbeat response");
+			UpfN4HandleHeartbeatResponse(xact, &pfcpMessage->heartbeatResponse);
+			break;
+		case PFCP_ASSOCIATION_SETUP_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP association setup request");
+			UpfN4HandleAssociationSetupRequest(xact,
+					&pfcpMessage->pFCPAssociationSetupRequest);
+			break;
+		case PFCP_ASSOCIATION_UPDATE_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP association update request");
+			UpfN4HandleAssociationUpdateRequest(xact,
+					&pfcpMessage->pFCPAssociationUpdateRequest);
+			break;
+		case PFCP_ASSOCIATION_RELEASE_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP association release response");
+			UpfN4HandleAssociationReleaseRequest(xact,
+					&pfcpMessage->pFCPAssociationReleaseRequest);
+			break;
+#endif
+		case PFCP_SESSION_ESTABLISHMENT_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session establishment request");
+#if 0
+			UpfN4HandleSessionEstablishmentRequest(session, xact,
+					&pfcpMessage->pFCPSessionEstablishmentRequest);
+			break;
+		case PFCP_SESSION_MODIFICATION_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session modification request");
+			UpfN4HandleSessionModificationRequest(session, xact,
+					&pfcpMessage->pFCPSessionModificationRequest);
+			break;
+		case PFCP_SESSION_DELETION_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session deletion request");
+			UpfN4HandleSessionDeletionRequest(session, xact,
+					&pfcpMessage->pFCPSessionDeletionRequest);
+			break;
+		case PFCP_SESSION_REPORT_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP session report response");
+			UpfN4HandleSessionReportResponse(session, xact,
+					&pfcpMessage->pFCPSessionReportResponse);
+			break;
+#endif
+		default:
+			UTLT_Error("No implement pfcp type: %d", pfcpMessage->header.type);
+	}
+freeBuf:
+	PfcpStructFree(pfcpMessage);
+	BufblkFree(bufBlk);
+freeRecvBuf:
+	BufblkFree(recvBufBlk);
+}
+
 static int
-packet_handler(__attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
+packet_handler(struct rte_mbuf *pkt,
+               struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
     meta->action = ONVM_NF_ACTION_DROP;
+    struct ipv4_hdr* ipv4_hdr;
+    ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
+    ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct ipv4_hdr*, 16);
+
+
+    PfcpHeader *pfcpHeader = NULL;
+
+    // TODO(vivek) extract Pfcp body message from IPv4 or IPv6, for now add
+    // support for IPv4 only
+    pfcpHeader = (PfcpHeader *) rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, 16 + 8 + 20);
+    pfcpHeader->length = ntohs(pfcpHeader->length);
+
+	// TODO(vivek): verify the PFCP version
+    // if (pfcpHeader->version > PFCP_VERSION) {
+    //    unsigned char vFail[8];
+    //    PfcpHeader *pfcpOut = (PfcpHeader *)vFail;
+
+    //    UTLT_Info("Unsupported PFCP version: %d", pfcpHeader->version);
+    //    pfcpOut->flags = (PFCP_VERSION << 5);
+    //    pfcpOut->type = PFCP_VERSION_NOT_SUPPORTED_RESPONSE;
+    //    pfcpOut->length = htons(4);
+    //    pfcpOut->sqn_only = pfcpHeader->sqn_only;
+    //    // TODO(free5gc): must check localAddress / remoteAddress / fd is correct?
+    //    SockSendTo(sock, vFail, 8);
+    //    BufblkFree(bufBlk);
+    //    return STATUS_ERROR;
+    //}
+    
+
+    ProcessN4Message(pkt);
+
     return 0;
 }
 
 int
 main(int argc, char *argv[]) {
-        int arg_offset;
-        struct onvm_nf_local_ctx *nf_local_ctx;
-        struct onvm_nf_function_table *nf_function_table;
+    Status status;
 
-        nf_local_ctx = onvm_nflib_init_nf_local_ctx();
-        onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
+    status = BufblkPoolInit();
+    if (status != STATUS_OK) {
+        rte_exit(EXIT_FAILURE, "Failed BufblkPoolInit\n");
+        return status;
+    }
 
-        nf_function_table = onvm_nflib_init_nf_function_table();
-        nf_function_table->pkt_handler = &packet_handler;
+    // status = UpfContextInit();
+    // if (status != STATUS_OK) {
+    //     rte_exit(EXIT_FAILURE, "Failed UpfContextInit\n");
+    //     return status;
+    // }
 
-        if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
-                onvm_nflib_stop(nf_local_ctx);
-                if (arg_offset == ONVM_SIGNAL_TERMINATION) {
-                        printf("Exiting due to user termination\n");
-                        return 0;
-                } else {
-                        rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
-                }
-        }
+    int arg_offset;
+    struct onvm_nf_local_ctx *nf_local_ctx;
+    struct onvm_nf_function_table *nf_function_table;
 
-        argc -= arg_offset;
-        argv += arg_offset;
+    nf_local_ctx = onvm_nflib_init_nf_local_ctx();
+    onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
 
-        onvm_nflib_run(nf_local_ctx);
+    nf_function_table = onvm_nflib_init_nf_function_table();
+    nf_function_table->pkt_handler = &packet_handler;
 
+    if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
         onvm_nflib_stop(nf_local_ctx);
-        printf("If we reach here, program is ending\n");
-        return 0;
+        if (arg_offset == ONVM_SIGNAL_TERMINATION) {
+            printf("Exiting due to user termination\n");
+            return 0;
+        } else {
+            rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
+        }
+    }
+
+    argc -= arg_offset;
+    argv += arg_offset;
+
+    onvm_nflib_run(nf_local_ctx);
+
+    onvm_nflib_stop(nf_local_ctx);
+    printf("If we reach here, program is ending\n");
+    return 0;
 }
