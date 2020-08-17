@@ -55,12 +55,100 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+#include "upf.h"
+
 #define NF_TAG "upf_u"
+
+#define SELF_IP 0
+
+upf_pdr_t*
+GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t addr)
+{
+    return NULL;
+}
+
+upf_pdr_t*
+GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td)
+{
+    return NULL;
+}
+
+upf_far_t*
+GetFarById(uint16_t id) {
+   return NULL;
+}
 
 static int
 packet_handler(__attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
     meta->action = ONVM_NF_ACTION_DROP;
+
+    struct ipv4_hdr* iph = onvm_pkt_ipv4_hdr(pkt); 
+    struct udp_hdr* udp_header = onvm_pkt_udp_hdr(pkt);
+
+    gtpu_header_t* gtp_hdr; // TODO(vivek): extract GTP header
+
+    upf_pdr_t* pdr;
+    
+    // Step 1: Identify if it is a uplink packet or downlink packet
+    if (iph->dst_addr == SELF_IP) { //
+        // invariant(dst_port == GTPV1_PORT);
+        // Step 2: Get PDR rule
+        pdr = GetPdrByUeIpAddress(pkt, iph->dst_addr);
+    } else {
+        // extract TEID from 
+        // Step 2: Get PDR rule
+        pdr = GetPdrByTeid(pkt, gtp_hdr->teid);
+    }
+
+    // if (!pdr) {
+    //     DEVLOG_INFO(dev, "no PDR found for %pI4, skip\n", &iph->daddr);
+    //     //TODO(vivek): what to do?
+    //     return 0;
+    // }
+
+    upf_far_t *far;
+    far = GetFarById(pdr->far_id);
+
+    if (!far) {
+        printf("There is no FAR related to PDR[%u]\n", pdr->id);
+		meta->action = ONVM_NF_ACTION_DROP;
+        return 0;
+    }
+
+	//TODO(vivek): implement the removal policy
+    switch (pdr->outer_header_removal) {
+		case OUTER_HEADER_REMOVAL_GTP_IP4:
+		case OUTER_HEADER_REMOVAL_GTP_IP6:
+		case OUTER_HEADER_REMOVAL_UDP_IP4:
+		case OUTER_HEADER_REMOVAL_UDP_IP6:
+		case OUTER_HEADER_REMOVAL_IP4:
+		case OUTER_HEADER_REMOVAL_IP6:
+		case OUTER_HEADER_REMOVAL_GTP:
+		case OUTER_HEADER_REMOVAL_S_TAG:
+		case OUTER_HEADER_REMOVAL_S_C_TAG:
+        default:
+            printf("unknown\n");
+    }
+
+    if (far) {
+        switch (far->apply_action) {
+            case FAR_DROP:
+                meta->action = ONVM_NF_ACTION_DROP;
+            case FAR_FORWARD:
+                // TODO(vivek): Implement forward policy
+            case FAR_BUFFER:
+                // TODO(vivek): Implement buffering policy
+            case FAR_NOTIFY_CP:
+                // TODO(vivek): Implement notify CP policy
+            case FAR_DUPLICATE:
+                // TODO(vivek): Implement duplicate policy
+            default:
+                printf("Unspec apply action[%u] in FAR[%u] and related to PDR[%u]",
+                    far->apply_action, far->id, pdr->id);
+        }
+    }
+
     return 0;
 }
 
