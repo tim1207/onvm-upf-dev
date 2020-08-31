@@ -57,9 +57,9 @@
 
 // #include "lib/n4_pfcp_handler.h"
 #include "lib/pfcp_message.h"
-#include "lib/pfcp_node.h"
-#include "lib/pfcp_xact.h"
-#include "lib/upf_context.h"
+// #include "lib/pfcp_node.h"
+// #include "lib/pfcp_xact.h"
+// #include "lib/upf_context.h"
 
 #define NF_TAG "upf_c"
 
@@ -76,10 +76,12 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
 	Status status;
 	Bufblk *bufBlk = NULL;
 	Bufblk *recvBufBlk = &rcvd_msg;
-	PfcpNode *upf; //TODO(vivek)
 	PfcpMessage *pfcpMessage = NULL;
+#if 0
+	PfcpNode *upf; //TODO(vivek)
 	PfcpXact *xact = NULL;
 	UpfSession *session = NULL;
+#endif
 
 	UTLT_Assert(recvBufBlk, return, "recv buffer no data");
 	bufBlk = BufblkAlloc(1, sizeof(PfcpMessage));

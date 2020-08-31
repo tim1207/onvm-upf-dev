@@ -49,14 +49,9 @@ APP = upf_c
 # all source are stored in SRCS-y
 SRCS-y := upf_c.c
 SRCS-y += lib/utlt_debug.c
-SRCS-y += lib/utlt_thread.c
 SRCS-y += lib/utlt_buff.c
 SRCS-y += lib/pfcp_message.c
 SRCS-y += lib/pfcp_types.c
-#SRCS-y += lib/pfcp_xact.c
-#SRCS-y += lib/upf_context.c
-#SRCS-y += lib/n4_pfcp_handler.c
-# SRCS-y += lib/utlt_yaml.c
 
 ONVM= $(SRCDIR)/../../onvm
 
