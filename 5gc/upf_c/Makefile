@@ -48,6 +48,7 @@ APP = upf_c
 
 # all source are stored in SRCS-y
 SRCS-y := upf_c.c
+SRCS-y += pfcp_session_handler.c
 SRCS-y += lib/utlt_debug.c
 SRCS-y += lib/utlt_buff.c
 SRCS-y += lib/pfcp_message.c
