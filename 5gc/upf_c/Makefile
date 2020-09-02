@@ -51,7 +51,6 @@ SRCS-y := upf_c.c
 SRCS-y += lib/utlt_debug.c
 SRCS-y += lib/utlt_buff.c
 SRCS-y += lib/pfcp_message.c
-SRCS-y += lib/pfcp_types.c
 
 ONVM= $(SRCDIR)/../../onvm
 
