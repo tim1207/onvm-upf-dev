@@ -12,6 +12,8 @@ typedef int Status;
 #define STATUS_OK 0
 #define STATUS_EAGAIN 1
 
+void SetLogLevel(int level);
+
 Status UTLT_SetLogLevel(const char *level);
 const char *UTLT_StrStatus(Status status);
 

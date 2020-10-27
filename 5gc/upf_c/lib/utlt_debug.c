@@ -7,8 +7,14 @@
 
 #include "utlt_lib.h"
 
+int configured_level = 0;
+
 // TODO : Need to use buffer written by ourself
 #define MAX_SIZE_OF_BUFFER 32768
+
+void SetLogLevel(int level) {
+  configured_level = level;
+}
 
 Status UTLT_SetLogLevel(const char *level) {
 #ifdef FREE5GC
@@ -23,6 +29,9 @@ Status UTLT_SetLogLevel(const char *level) {
 
 int UTLT_LogPrint(int level, const char *filename, const int line, 
                   const char *funcname, const char *fmt, ...) {
+  if (level >= configured_level) {
+    return 0;
+  }
     static char buffer[MAX_SIZE_OF_BUFFER];
 
     unsigned int cnt, vspCnt;

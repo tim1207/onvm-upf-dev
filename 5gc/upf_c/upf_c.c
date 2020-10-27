@@ -55,6 +55,8 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+#include "5gc/upf.h"
+
 // #include "lib/n4_pfcp_handler.h"
 #include "lib/pfcp_message.h"
 // #include "lib/pfcp_node.h"
@@ -83,8 +85,8 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
 #if 0
 	PfcpNode *upf; //TODO(vivek)
 	PfcpXact *xact = NULL;
-	UpfSession *session = NULL;
 #endif
+  UpfSession *session = NULL;
 
   UTLT_Assert(recvBufBlk, return, "recv buffer no data");
   bufBlk = BufblkAlloc(1, sizeof(PfcpMessage));
@@ -100,41 +102,30 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
     if (!pfcpMessage->header.seid) {
       // without SEID
       if (pfcpMessage->header.type == PFCP_SESSION_ESTABLISHMENT_REQUEST) {
-#if 0
-				session = UpfSessionAddByMessage(pfcpMessage);
-#endif
+        session = UpfSessionAddByMessage(pfcpMessage);
       } else {
         UTLT_Assert(0, goto freeBuf, "no SEID but not SESSION ESTABLISHMENT");
       }
     } else {
-#if 0
-			// with SEID
-			session = UpfSessionFindBySeid(pfcpMessage->header.seid);
-#endif
+      // with SEID
+      session = UpfSessionFindBySeid(pfcpMessage->header.seid);
     }
+  }
+  UTLT_Assert(session, goto freeBuf, "do not find / establish session");
 
 #if 0
-		UTLT_Assert(session, goto freeBuf,
-				"do not find / establish session");
-#endif
-
     if (pfcpMessage->header.type != PFCP_SESSION_REPORT_RESPONSE) {
-#if 0
 			session->pfcpNode = upf;
-#endif
     }
 
-#if 0
 		status = PfcpXactReceive(session->pfcpNode,
 				&pfcpMessage->header, &xact);
-#endif
     UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
   } else {
-#if 0
 		status = PfcpXactReceive(upf, &pfcpMessage->header, &xact);
-#endif
     UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
   }
+#endif
 
   switch (pfcpMessage->header.type) {
     case PFCP_HEARTBEAT_REQUEST:
@@ -163,7 +154,7 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
     case PFCP_SESSION_ESTABLISHMENT_REQUEST:
       UTLT_Info("[PFCP] Handle PFCP session establishment request");
       UpfN4HandleSessionEstablishmentRequest(
-          &pfcpMessage->pFCPSessionEstablishmentRequest);
+          session, &pfcpMessage->pFCPSessionEstablishmentRequest);
       break;
     case PFCP_SESSION_MODIFICATION_REQUEST:
       UTLT_Info("[PFCP] Handle PFCP session modification request");
@@ -206,22 +197,21 @@ static int packet_handler(
   pfcpHeader->length = ntohs(pfcpHeader->length);
 
   // TODO(vivek): verify the PFCP version
-  // if (pfcpHeader->version > PFCP_VERSION) {
-  //     unsigned char vFail[8];
-  //     PfcpHeader *pfcpOut = (PfcpHeader *)vFail;
+  if (pfcpHeader->version > PFCP_VERSION) {
+    unsigned char vFail[8];
+    PfcpHeader *pfcpOut = (PfcpHeader *)vFail;
 
-  //     UTLT_Info("Unsupported PFCP version: %d", pfcpHeader->version);
-  //     pfcpOut->flags = (PFCP_VERSION << 5);
-  //     pfcpOut->type = PFCP_VERSION_NOT_SUPPORTED_RESPONSE;
-  //     pfcpOut->length = htons(4);
-  //     pfcpOut->sqn_only = pfcpHeader->sqn_only;
-  //     // TODO(vivek): Send to back to SMF
-  //     // TODO(free5gc): must check localAddress / remoteAddress / fd is
-  //     correct?
-  //     // SockSendTo(sock, vFail, 8);
-  //     // BufblkFree(bufBlk);
-  //     return 0;
-  // }
+    UTLT_Info("Unsupported PFCP version: %d", pfcpHeader->version);
+    pfcpOut->flags = (PFCP_VERSION << 5);
+    pfcpOut->type = PFCP_VERSION_NOT_SUPPORTED_RESPONSE;
+    pfcpOut->length = htons(4);
+    pfcpOut->sqn_only = pfcpHeader->sqn_only;
+    // TODO(vivek): Send to back to SMF
+    // TODO(free5gc): must check localAddress / remoteAddress / fd is correct?
+    // SockSendTo(sock, vFail, 8);
+    // BufblkFree(bufBlk);
+    return 0;
+  }
 
   ProcessN4Message(pkt);
 
@@ -236,6 +226,8 @@ int main(int argc, char *argv[]) {
     rte_exit(EXIT_FAILURE, "Failed BufblkPoolInit\n");
     return status;
   }
+
+  SetLogLevel(5);
 
   int arg_offset;
   struct onvm_nf_local_ctx *nf_local_ctx;
@@ -260,6 +252,8 @@ int main(int argc, char *argv[]) {
 
   argc -= arg_offset;
   argv += arg_offset;
+
+  PfcpSessionTableNFInit();
 
   onvm_nflib_run(nf_local_ctx);
 

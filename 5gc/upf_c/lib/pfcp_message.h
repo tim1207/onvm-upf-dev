@@ -7,6 +7,24 @@
 #include "utlt_lib.h"
 #include "utlt_buff.h"
 
+#define PFCP_VERSION    1
+
+#define PFCP_CAUSE_REQUEST_ACCEPTED                     1
+#define PFCP_CAUSE_REQUEST_REJECTED                     64
+#define PFCP_CAUSE_SESSION_CONTEXT_NOT_FOUND            65
+#define PFCP_CAUSE_MANDATORY_IE_MISSING                 66
+#define PFCP_CAUSE_CONDITIONAL_IE_MISSING               67
+#define PFCP_CAUSE_INVALID_LENGTH                       68
+#define PFCP_CAUSE_MANDATORY_IE_INCORRECT               69
+#define PFCP_CAUSE_INVALID_FORWARDING_POLICY            70
+#define PFCP_CAUSE_INVALID_F_TEID_ALLOCATION_OPTION     71
+#define PFCP_CAUSE_NO_ESTABLISHED_PFCP_ASSOCIATION      72
+#define PFCP_CAUSE_RULE_CREATION_MODIFICATION_FAILURE   73
+#define PFCP_CAUSE_PFCP_ENTITY_IN_CONGESTION            74
+#define PFCP_CAUSE_NO_RESOURCES_AVAILABLE               75
+#define PFCP_CAUSE_SERVICE_NOT_SUPPORTED                76
+#define PFCP_CAUSE_SYSTEM_FAILURE                       77
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
