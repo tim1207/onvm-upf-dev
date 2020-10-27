@@ -55,131 +55,154 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
-#include "upf.h"
+#include "5gc/gtp.h"
+#include "5gc/upf.h"
 
 #define NF_TAG "upf_u"
 
 #define SELF_IP 0
 
-upf_pdr_t*
-GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t addr)
-{
+upf_pdr_t *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t addr) {
+  return NULL;
+}
+
+upf_pdr_t *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
+  UpfSession* session = UpfSessionFindBySeid(td);
+  if (!session) {
     return NULL;
+  }
+  int i = 0;
+  for (i = 0; i < MAX_PDR_RULE; i++) {
+    if (session->pdr_list[i].active == 1) {
+      return &session->pdr_list[i];
+    }
+  }
+  return NULL;
 }
 
-upf_pdr_t*
-GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td)
-{
-    return NULL;
-}
+upf_far_t *GetFarById(uint16_t id) { return NULL; }
 
-upf_far_t*
-GetFarById(uint16_t id) {
-   return NULL;
-}
+static int packet_handler(
+    __attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
+    __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+  meta->action = ONVM_NF_ACTION_DROP;
 
-static int
-packet_handler(__attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
-               __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-    meta->action = ONVM_NF_ACTION_DROP;
+  struct ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
+  struct udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
 
-    struct ipv4_hdr* iph = onvm_pkt_ipv4_hdr(pkt); 
-    struct udp_hdr* udp_header = onvm_pkt_udp_hdr(pkt);
+  if (!iph) {
+    printf("IP header null\n");
+    iph = rte_pktmbuf_mtod_offset(pkt, struct ipv4_hdr *, 16);
+  }
 
-    gtpu_header_t* gtp_hdr; // TODO(vivek): extract GTP header
-
-    upf_pdr_t* pdr;
-    
-    // Step 1: Identify if it is a uplink packet or downlink packet
-    if (iph->dst_addr == SELF_IP) { //
-        // invariant(dst_port == GTPV1_PORT);
-        // Step 2: Get PDR rule
-        pdr = GetPdrByUeIpAddress(pkt, iph->dst_addr);
-    } else {
-        // extract TEID from 
-        // Step 2: Get PDR rule
-        pdr = GetPdrByTeid(pkt, gtp_hdr->teid);
-    }
-
-    // if (!pdr) {
-    //     DEVLOG_INFO(dev, "no PDR found for %pI4, skip\n", &iph->daddr);
-    //     //TODO(vivek): what to do?
-    //     return 0;
-    // }
-
-    upf_far_t *far;
-    far = GetFarById(pdr->far_id);
-
-    if (!far) {
-        printf("There is no FAR related to PDR[%u]\n", pdr->id);
-		meta->action = ONVM_NF_ACTION_DROP;
-        return 0;
-    }
-
-	//TODO(vivek): implement the removal policy
-    switch (pdr->outer_header_removal) {
-		case OUTER_HEADER_REMOVAL_GTP_IP4:
-		case OUTER_HEADER_REMOVAL_GTP_IP6:
-		case OUTER_HEADER_REMOVAL_UDP_IP4:
-		case OUTER_HEADER_REMOVAL_UDP_IP6:
-		case OUTER_HEADER_REMOVAL_IP4:
-		case OUTER_HEADER_REMOVAL_IP6:
-		case OUTER_HEADER_REMOVAL_GTP:
-		case OUTER_HEADER_REMOVAL_S_TAG:
-		case OUTER_HEADER_REMOVAL_S_C_TAG:
-        default:
-            printf("unknown\n");
-    }
-
-    if (far) {
-        switch (far->apply_action) {
-            case FAR_DROP:
-                meta->action = ONVM_NF_ACTION_DROP;
-            case FAR_FORWARD:
-                // TODO(vivek): Implement forward policy
-            case FAR_BUFFER:
-                // TODO(vivek): Implement buffering policy
-            case FAR_NOTIFY_CP:
-                // TODO(vivek): Implement notify CP policy
-            case FAR_DUPLICATE:
-                // TODO(vivek): Implement duplicate policy
-            default:
-                printf("Unspec apply action[%u] in FAR[%u] and related to PDR[%u]",
-                    far->apply_action, far->id, pdr->id);
-        }
-    }
-
+  if (!iph) {
+    printf("IP header null\n");
     return 0;
+  } else {
+    onvm_pkt_print_ipv4(iph);
+  }
+
+  upf_pdr_t *pdr;
+
+  // Step 1: Identify if it is a uplink packet or downlink packet
+  if (iph->dst_addr == SELF_IP) {  //
+    // invariant(dst_port == GTPV1_PORT);
+    // Step 2: Get PDR rule
+    pdr = GetPdrByUeIpAddress(pkt, iph->dst_addr);
+  } else {
+    // extract TEID from
+    // Step 2: Get PDR rule
+    uint32_t teid = get_teid_gtp_packet(pkt, udp_header, meta);
+    printf("TEID %u\n", teid);
+    pdr = GetPdrByTeid(pkt, teid);
+  }
+
+  if (!pdr) {
+    printf("no PDR found for %pI4, skip\n", &iph->dst_addr);
+    // TODO(vivek): what to do?
+    return 0;
+  }
+
+  upf_far_t *far;
+  far = pdr->far;
+
+  if (!far) {
+    printf("There is no FAR related to PDR[%u]\n", pdr->id);
+    meta->action = ONVM_NF_ACTION_DROP;
+    return 0;
+  }
+
+  // TODO(vivek): implement the removal policy
+  switch (pdr->outer_header_removal) {
+    case OUTER_HEADER_REMOVAL_GTP_IP4:
+      printf("Removing GTP Header\n");
+      break;
+    case OUTER_HEADER_REMOVAL_GTP_IP6:
+    case OUTER_HEADER_REMOVAL_UDP_IP4:
+    case OUTER_HEADER_REMOVAL_UDP_IP6:
+    case OUTER_HEADER_REMOVAL_IP4:
+    case OUTER_HEADER_REMOVAL_IP6:
+    case OUTER_HEADER_REMOVAL_GTP:
+    case OUTER_HEADER_REMOVAL_S_TAG:
+    case OUTER_HEADER_REMOVAL_S_C_TAG:
+    default:
+      printf("unknown\n");
+  }
+
+  if (far) {
+    switch (far->apply_action) {
+      case FAR_DROP:
+        printf("Dropping the packet based on PDR\n");
+        break;
+      case FAR_FORWARD:
+        printf("Forwarding the packet based on PDR\n");
+      // TODO(vivek): Implement forward policy
+        break;
+      case FAR_BUFFER:
+      // TODO(vivek): Implement buffering policy
+      case FAR_NOTIFY_CP:
+      // TODO(vivek): Implement notify CP policy
+      case FAR_DUPLICATE:
+      // TODO(vivek): Implement duplicate policy
+      default:
+        printf("Unspec apply action[%u] in FAR[%u] and related to PDR[%u]",
+               far->apply_action, far->id, pdr->id);
+    }
+  }
+
+  return 0;
 }
 
-int
-main(int argc, char *argv[]) {
-        int arg_offset;
-        struct onvm_nf_local_ctx *nf_local_ctx;
-        struct onvm_nf_function_table *nf_function_table;
+int main(int argc, char *argv[]) {
+  int arg_offset;
+  struct onvm_nf_local_ctx *nf_local_ctx;
+  struct onvm_nf_function_table *nf_function_table;
 
-        nf_local_ctx = onvm_nflib_init_nf_local_ctx();
-        onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
+  nf_local_ctx = onvm_nflib_init_nf_local_ctx();
+  onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
 
-        nf_function_table = onvm_nflib_init_nf_function_table();
-        nf_function_table->pkt_handler = &packet_handler;
+  nf_function_table = onvm_nflib_init_nf_function_table();
+  nf_function_table->pkt_handler = &packet_handler;
 
-        if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
-                onvm_nflib_stop(nf_local_ctx);
-                if (arg_offset == ONVM_SIGNAL_TERMINATION) {
-                        printf("Exiting due to user termination\n");
-                        return 0;
-                } else {
-                        rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
-                }
-        }
+  if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx,
+                                    nf_function_table)) < 0) {
+    onvm_nflib_stop(nf_local_ctx);
+    if (arg_offset == ONVM_SIGNAL_TERMINATION) {
+      printf("Exiting due to user termination\n");
+      return 0;
+    } else {
+      rte_exit(EXIT_FAILURE, "Failed ONVM init\n");
+    }
+  }
 
-        argc -= arg_offset;
-        argv += arg_offset;
+  argc -= arg_offset;
+  argv += arg_offset;
 
-        onvm_nflib_run(nf_local_ctx);
+  PfcpSessionTableNFInit();
 
-        onvm_nflib_stop(nf_local_ctx);
-        printf("If we reach here, program is ending\n");
-        return 0;
+  onvm_nflib_run(nf_local_ctx);
+
+  onvm_nflib_stop(nf_local_ctx);
+  printf("If we reach here, program is ending\n");
+  return 0;
 }
