@@ -1,5 +1,7 @@
 #include "pfcp_session_handler.h"
 
+#include <arpa/inet.h>
+
 uint64_t seid_pool = 1;
 
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
@@ -50,9 +52,10 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
   //             ((int8_t *)request->pDNType.value)[0]);
   UTLT_Assert(session, return NULL, "session add error");
 
-  // session->smfSeid = *(uint64_t*)request->cPFSEID.value;
+  session->smfSeid = *(uint64_t *)request->cPFSEID.value;
+  session->upfSeid = seid_pool;
   // session->upfSeid = session->index+1;
-  // UTLT_Trace("UPF Establishment UPF SEID: %lu", session->upfSeid);
+  UTLT_Trace("UPF Establishment UPF SEID: %lu", session->upfSeid);
   seid_pool++;
   return session;
 }
@@ -81,24 +84,17 @@ Status UpfN4HandleCreateFar(UpfSession *session, CreateFAR *createFar) {
   UTLT_Assert(createFar->applyAction.presence, return STATUS_ERROR,
               "Apply Action not presence");
 
-  // UpfFAR upfFar;
-  // memset(&upfFar, 0, sizeof(UpfFAR));
+  uint32_t farId = ntohl(*((uint32_t *)createFar->fARID.value));
+  if (createFar->fARID.presence) {
+    session->far_list[farId].id = farId;
+    UTLT_Info("FAR ID: %u", farId);
+  }
 
-  // uint32_t farID = ntohl(*((uint32_t*) createFar->fARID.value));
-  // UTLT_Assert(UpfFARFindByID(farID, &upfFar), return STATUS_ERROR, "FAR
-  // ID[%u] does exist in UPF Context", farID);
-
-  // TODO: Need to store the rule in UPF
-  // UTLT_Assert(_ConvertCreateFARTlvToRule(&upfFar, createFar) == STATUS_OK,
-  //     return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
-
-  // // Using UPDK API
-  // UTLT_Assert(Gtpv1TunnelCreateFAR(&upfFar) == 0, return STATUS_ERROR,
-  //     "Gtpv1TunnelCreateFAR failed");
-
-  // Register FAR to Session
-  // UTLT_Assert(UpfFARRegisterToSession(session, &upfFar),
-  //  return STATUS_ERROR, "UpfFARRegisterToSession failed");
+  if (createFar->applyAction.presence) {
+    session->far_list[farId].apply_action =
+        *((uint8_t *)(createFar->applyAction.value));
+    UTLT_Info("FAR Apply Action: %u", session->far_list[farId].apply_action);
+  }
 
   return STATUS_OK;
 }
@@ -114,11 +110,37 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
   UTLT_Assert(createPdr->pDI.sourceInterface.presence, return STATUS_ERROR,
               "PDI SourceInterface not presence");
 
-  // UpfPDR upfPdr;
-  // memset(&upfPdr, 0, sizeof(UpfPDR));
+  uint16_t pdrID = ntohs(*((uint16_t *)createPdr->pDRID.value));
+  if (createPdr->pDRID.presence) {
+    session->pdr_list[pdrID].id = pdrID;
+    UTLT_Info("PDR ID: %u", pdrID);
+  }
 
-  // uint16_t pdrID = ntohs(*((uint16_t*) createPdr->pDRID.value));
-  // UTLT_Assert(UpfPDRFindByID(pdrID, &upfPdr), return STATUS_ERROR, "PDR
+  if (createPdr->precedence.presence) {
+    session->pdr_list[pdrID].precedence =
+        ntohl(*((uint32_t *)createPdr->precedence.value));
+    UTLT_Info("Precedence %u", session->pdr_list[pdrID].precedence);
+  }
+
+  if (createPdr->outerHeaderRemoval.presence) {
+    session->pdr_list[pdrID].outer_header_removal =
+        *((uint8_t *)(createPdr->outerHeaderRemoval.value));
+    UTLT_Info("PDR Outer Header Removal: %u",
+              session->pdr_list[pdrID].outer_header_removal);
+  }
+
+  if (createPdr->fARID.presence) {
+    session->pdr_list[pdrID].far_id =
+        ntohl(*((uint32_t *)createPdr->fARID.value));
+    session->pdr_list[pdrID].far =
+        &session->far_list[session->pdr_list[pdrID].far_id];
+    UTLT_Info("PDR FAR ID: %u", session->pdr_list[pdrID].far_id);
+  }
+
+  session->pdr_list[pdrID].active = 1;
+
+  // TODO(vivek): UTLT_Assert(UpfPDRFindByID(pdrID, &upfPdr), return
+  // STATUS_ERROR, "PDR
   // ID[%u] does exist in UPF Context", pdrID);
 
   // // TODO: Need to store the rule in UPF
@@ -157,7 +179,7 @@ Status UpfN4HandleSessionEstablishmentRequest(
     UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                 "Create FAR error");
   }
-  if (request->createPDR[1].presence) {
+  if (request->createFAR[1].presence) {
     status = UpfN4HandleCreateFar(session, &request->createFAR[1]);
     UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                 "Create FAR error");

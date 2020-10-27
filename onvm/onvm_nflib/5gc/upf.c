@@ -141,7 +141,7 @@ void UpfPfcpSessionDeleteBySeid(uint64_t seid) {
 }
 
 UpfSession *GetSessionByIndex(int32_t idx) {
-  return (UpfSession *)&upf_session_table
+  return (UpfSession *) &upf_session_table
       ->data[idx * upf_session_table->entry_size];
 }
 
