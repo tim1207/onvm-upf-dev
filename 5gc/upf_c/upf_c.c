@@ -40,6 +40,9 @@
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <rte_common.h>
+#include <rte_ip.h>
+#include <rte_mbuf.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,14 +51,9 @@
 #include <sys/queue.h>
 #include <unistd.h>
 
-#include <rte_common.h>
-#include <rte_ip.h>
-#include <rte_mbuf.h>
-
+#include "5gc/upf.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
-
-#include "5gc/upf.h"
 
 // #include "lib/n4_pfcp_handler.h"
 #include "lib/pfcp_message.h"
@@ -159,7 +157,7 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
     case PFCP_SESSION_MODIFICATION_REQUEST:
       UTLT_Info("[PFCP] Handle PFCP session modification request");
       UpfN4HandleSessionModificationRequest(
-          &pfcpMessage->pFCPSessionModificationRequest);
+          session, &pfcpMessage->pFCPSessionModificationRequest);
       break;
     case PFCP_SESSION_DELETION_REQUEST:
       UTLT_Info("[PFCP] Handle PFCP session deletion request");

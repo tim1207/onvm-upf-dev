@@ -16,9 +16,8 @@ void UpfN4HandleAssociationUpdateRequest(
 void UpfN4HandleAssociationReleaseRequest(
     PFCPAssociationReleaseRequest *pFCPAssociationReleaseRequest);
 Status UpfN4HandleSessionEstablishmentRequest(
-    UpfSession *,
-    PFCPSessionEstablishmentRequest *pFCPSessionEstablishmentRequest);
-void UpfN4HandleSessionModificationRequest(
-    PFCPSessionModificationRequest *pFCPSessionModificationRequest);
+    UpfSession *, PFCPSessionEstablishmentRequest *);
+Status UpfN4HandleSessionModificationRequest(
+    UpfSession *session, PFCPSessionModificationRequest *request);
 void UpfN4HandleSessionDeletionRequest(
     PFCPSessionDeletionRequest *pFCPSessionDeletionRequest);

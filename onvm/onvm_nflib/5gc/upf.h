@@ -17,11 +17,10 @@
 #define MAX_FAR_RULE 8
 
 /* Forward Action Rules - Forwarding Parameters */
-typedef struct
-{
+typedef struct {
   uint16_t flags;
-#define FAR_F_REDIRECT_INFORMATION	BIT(0)
-#define FAR_F_OUTER_HEADER_CREATION	BIT(1)
+#define FAR_F_REDIRECT_INFORMATION BIT(0)
+#define FAR_F_OUTER_HEADER_CREATION BIT(1)
 
 #if 0
   pfcp_destination_interface_t dst_intf;
@@ -37,50 +36,55 @@ typedef struct
 } upf_far_forward_t;
 
 /* Forward Action Rules */
-typedef struct
-{
+typedef struct {
+  uint8_t active;
   uint16_t id;
   uint16_t apply_action;
-#define FAR_DROP       0x0001
-#define FAR_FORWARD    0x0002
-#define FAR_BUFFER     0x0004
-#define FAR_NOTIFY_CP  0x0008
-#define FAR_DUPLICATE  0x0010
+#define FAR_DROP 0x0001
+#define FAR_FORWARD 0x0002
+#define FAR_BUFFER 0x0004
+#define FAR_NOTIFY_CP 0x0008
+#define FAR_DUPLICATE 0x0010
 
-  union
-  {
+  union {
     upf_far_forward_t forward;
     uint16_t bar_id;
   };
 } upf_far_t;
 
-#define OUTER_HEADER_REMOVAL_GTP_IP4   0
-#define OUTER_HEADER_REMOVAL_GTP_IP6   1
-#define OUTER_HEADER_REMOVAL_UDP_IP4   2
-#define OUTER_HEADER_REMOVAL_UDP_IP6   3
-#define OUTER_HEADER_REMOVAL_IP4       4
-#define OUTER_HEADER_REMOVAL_IP6       5
-#define OUTER_HEADER_REMOVAL_GTP       6
-#define OUTER_HEADER_REMOVAL_S_TAG     7
-#define OUTER_HEADER_REMOVAL_S_C_TAG   8
+#define ABSENT 0
+#define PRESENT 1
+
+#define INACTIVE 0
+#define ACTIVE 1
+
+#define OUTER_HEADER_REMOVAL_GTP_IP4 0
+#define OUTER_HEADER_REMOVAL_GTP_IP6 1
+#define OUTER_HEADER_REMOVAL_UDP_IP4 2
+#define OUTER_HEADER_REMOVAL_UDP_IP6 3
+#define OUTER_HEADER_REMOVAL_IP4 4
+#define OUTER_HEADER_REMOVAL_IP6 5
+#define OUTER_HEADER_REMOVAL_GTP 6
+#define OUTER_HEADER_REMOVAL_S_TAG 7
+#define OUTER_HEADER_REMOVAL_S_C_TAG 8
 /* Packet Detection Rules */
-typedef struct
-{
+typedef struct {
   uint32_t id;
   uint16_t precedence;
 #if 0
   upf_pdi_t pdi;
 #endif
+  uint8_t flag_outer_header_removal;
   uint8_t outer_header_removal;
 
   uint16_t far_id;
-  upf_far_t *far;
-  uint16_t *urr_ids;
-  uint32_t *qer_ids;
+  upf_far_t* far;
+  uint16_t* urr_ids;
+  uint32_t* qer_ids;
   uint8_t active;
 } upf_pdr_t;
 
-typedef struct { 
+typedef struct {
   int32_t seid;
   uint64_t smfSeid;
   uint64_t upfSeid;
