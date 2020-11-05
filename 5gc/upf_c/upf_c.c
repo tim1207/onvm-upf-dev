@@ -184,9 +184,9 @@ static int packet_handler(
     struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
   meta->action = ONVM_NF_ACTION_DROP;
-  struct ipv4_hdr *ipv4_hdr;
+  struct rte_ipv4_hdr *ipv4_hdr;
   ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-  ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct ipv4_hdr *, 16);
+  ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, 16);
 
   PfcpHeader *pfcpHeader = NULL;
 

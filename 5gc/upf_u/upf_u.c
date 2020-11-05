@@ -40,6 +40,9 @@
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <rte_common.h>
+#include <rte_ip.h>
+#include <rte_mbuf.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,15 +51,10 @@
 #include <sys/queue.h>
 #include <unistd.h>
 
-#include <rte_common.h>
-#include <rte_ip.h>
-#include <rte_mbuf.h>
-
-#include "onvm_nflib.h"
-#include "onvm_pkt_helper.h"
-
 #include "5gc/gtp.h"
 #include "5gc/upf.h"
+#include "onvm_nflib.h"
+#include "onvm_pkt_helper.h"
 
 #define NF_TAG "upf_u"
 
@@ -67,7 +65,7 @@ upf_pdr_t *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t addr) {
 }
 
 upf_pdr_t *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
-  UpfSession* session = UpfSessionFindBySeid(td);
+  UpfSession *session = UpfSessionFindBySeid(td);
   if (!session) {
     return NULL;
   }
@@ -87,12 +85,12 @@ static int packet_handler(
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
   meta->action = ONVM_NF_ACTION_DROP;
 
-  struct ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
-  struct udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
+  struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
+  struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
 
   if (!iph) {
     printf("IP header null\n");
-    iph = rte_pktmbuf_mtod_offset(pkt, struct ipv4_hdr *, 16);
+    iph = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, 16);
   }
 
   if (!iph) {
@@ -134,9 +132,24 @@ static int packet_handler(
 
   // TODO(vivek): implement the removal policy
   switch (pdr->outer_header_removal) {
-    case OUTER_HEADER_REMOVAL_GTP_IP4:
+    case OUTER_HEADER_REMOVAL_GTP_IP4: {
       printf("Removing GTP Header\n");
-      break;
+      const int outer_hdr_len = sizeof(struct rte_ether_hdr) +
+                                sizeof(struct rte_ipv4_hdr) +
+                                sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t);
+      rte_pktmbuf_adj(pkt, (uint16_t)outer_hdr_len);
+
+      // Prepend ethernet header
+      struct rte_ether_hdr *eth_hdr =
+          (struct rte_ether_hdr *)rte_pktmbuf_prepend(
+              pkt, (uint16_t)sizeof(struct rte_ether_hdr));
+
+      eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+      int j = 0;
+      for (j = 0; j < RTE_ETHER_ADDR_LEN; ++j) {
+        eth_hdr->d_addr.addr_bytes[j] = j;
+      }
+    } break;
     case OUTER_HEADER_REMOVAL_GTP_IP6:
     case OUTER_HEADER_REMOVAL_UDP_IP4:
     case OUTER_HEADER_REMOVAL_UDP_IP6:
@@ -156,7 +169,7 @@ static int packet_handler(
         break;
       case FAR_FORWARD:
         printf("Forwarding the packet based on PDR\n");
-      // TODO(vivek): Implement forward policy
+        // TODO(vivek): Implement forward policy
         break;
       case FAR_BUFFER:
       // TODO(vivek): Implement buffering policy

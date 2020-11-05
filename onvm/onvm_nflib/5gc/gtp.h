@@ -37,6 +37,8 @@
  *
  ********************************************************************/
 
+#pragma once
+
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -53,8 +55,8 @@
 #include <rte_ip.h>
 #include <rte_mbuf.h>
 
-#include "onvm_nflib.h"
-#include "onvm_pkt_helper.h"
+#include "../onvm_nflib.h"
+#include "../onvm_pkt_helper.h"
 
 #include "upf.h"
 
@@ -81,21 +83,6 @@ typedef struct gtpv1_header {
 static __rte_always_inline void gtpv1_set_header(gtpv1_t *gtp_hdr,
                                                  uint16_t payload_len,
                                                  uint32_t teid);
-
-static __rte_always_inline void gtpv1_set_header(gtpv1_t *gtp1_hdr,
-                                                 uint16_t payload_len,
-                                                 uint32_t teid) {
-  /* Bits 8  7  6  5  4  3  2  1
-   *    +--+--+--+--+--+--+--+--+
-   *    |version |PT| 0| E| S|PN|
-   *    +--+--+--+--+--+--+--+--+
-   *     0  0  1  1  0  0  0  0
-   */
-  gtp1_hdr->flags = 0x30;  // v1, GTP-non-prime
-  gtp1_hdr->type = GTP_TPDU;
-  gtp1_hdr->length = htons(payload_len);
-  gtp1_hdr->teid = htonl(teid);
-}
 
 /**
  *    Move the GTP Header definition into onvm_nflib/upf.h later
@@ -168,7 +155,29 @@ static inline int get_gtp_version(uint8_t gtp_hdr_info) {
 }
 
 static inline int parse_gtp_packet(struct rte_mbuf *pkt,
-                                   struct udp_hdr *udp_hdr, void **gtp_hdr) {
+                                   struct rte_udp_hdr *udp_hdr, void **gtp_hdr);
+
+static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
+                                           struct rte_udp_hdr *udp_hdr,
+                                           struct onvm_pkt_meta *meta);
+
+static __rte_always_inline void gtpv1_set_header(gtpv1_t *gtp1_hdr,
+                                                 uint16_t payload_len,
+                                                 uint32_t teid) {
+  /* Bits 8  7  6  5  4  3  2  1
+   *    +--+--+--+--+--+--+--+--+
+   *    |version |PT| 0| E| S|PN|
+   *    +--+--+--+--+--+--+--+--+
+   *     0  0  1  1  0  0  0  0
+   */
+  gtp1_hdr->flags = 0x30;  // v1, GTP-non-prime
+  gtp1_hdr->type = GTP_TPDU;
+  gtp1_hdr->length = htons(payload_len);
+  gtp1_hdr->teid = htonl(teid);
+}
+
+static inline int parse_gtp_packet(struct rte_mbuf *pkt,
+                                   struct rte_udp_hdr *udp_hdr, void **gtp_hdr) {
   /*
       Parameters:	rte_mbuf *, udp_hdr *, output with pointer to gtp parsed
      header.
@@ -190,9 +199,9 @@ static inline int parse_gtp_packet(struct rte_mbuf *pkt,
 
   // Parse GTP (first common)
   gtp_hdr_common = rte_pktmbuf_mtod_offset(pkt, struct gtp_hdr_common *,
-                                           sizeof(struct ether_hdr) +
-                                               sizeof(struct ipv4_hdr) +
-                                               sizeof(struct udp_hdr));
+                                           sizeof(struct rte_ether_hdr) +
+                                               sizeof(struct rte_ipv4_hdr) +
+                                               sizeof(struct rte_udp_hdr));
 
   uint8_t gtp_hdr_info = gtp_hdr_common->gtp_hdr_info;
   uint8_t gtp_version = get_gtp_version(gtp_hdr_info);
@@ -204,29 +213,29 @@ static inline int parse_gtp_packet(struct rte_mbuf *pkt,
   if (gtp_version == 1) {
     if (gtp_version_one_has_last_row) {
       *gtp_hdr = rte_pktmbuf_mtod_offset(pkt, struct gtp_hdr_v1_with_last_row *,
-                                         sizeof(struct ether_hdr) +
-                                             sizeof(struct ipv4_hdr) +
-                                             sizeof(struct udp_hdr));
+                                         sizeof(struct rte_ether_hdr) +
+                                             sizeof(struct rte_ipv4_hdr) +
+                                             sizeof(struct rte_udp_hdr));
       ret = v1_with_last_row;
     } else {
       *gtp_hdr = rte_pktmbuf_mtod_offset(
           pkt, struct gtp_hdr_v1_without_last_row *,
-          sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) +
-              sizeof(struct udp_hdr));
+          sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr) +
+              sizeof(struct rte_udp_hdr));
       ret = v1_without_last_row;
     }
   } else if (gtp_version == 2) {
     if (gtp_version_two_has_teid_row) {
       *gtp_hdr = rte_pktmbuf_mtod_offset(pkt, struct gtp_hdr_v2_with_teid *,
-                                         sizeof(struct ether_hdr) +
-                                             sizeof(struct ipv4_hdr) +
-                                             sizeof(struct udp_hdr));
+                                         sizeof(struct rte_ether_hdr) +
+                                             sizeof(struct rte_ipv4_hdr) +
+                                             sizeof(struct rte_udp_hdr));
       ret = v2_with_teid;
     } else {
       *gtp_hdr = rte_pktmbuf_mtod_offset(pkt, struct gtp_hdr_v2_without_teid *,
-                                         sizeof(struct ether_hdr) +
-                                             sizeof(struct ipv4_hdr) +
-                                             sizeof(struct udp_hdr));
+                                         sizeof(struct rte_ether_hdr) +
+                                             sizeof(struct rte_ipv4_hdr) +
+                                             sizeof(struct rte_udp_hdr));
       ret = v2_without_teid;
     }
   } else {
@@ -238,7 +247,7 @@ static inline int parse_gtp_packet(struct rte_mbuf *pkt,
 }
 
 static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
-                                           struct udp_hdr *udp_hdr,
+                                           struct rte_udp_hdr *udp_hdr,
                                            struct onvm_pkt_meta *meta) {
   // extract TEID from struct rte_mbuf *pkt
   void *gtp_hdr;
@@ -282,3 +291,4 @@ static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
   printf("%" PRIu32 "\n", teid);
   return teid;
 }
+
