@@ -2,6 +2,10 @@
 
 #include <arpa/inet.h>
 
+#include "rte_malloc.h"
+
+#include "onvm_nflib.h"
+
 uint64_t seid_pool = 1;
 
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
@@ -81,6 +85,28 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
   if (session->far_list[farId].active != ACTIVE) {
     UTLT_Error("FAR[%u] does not exist", farId);
     return STATUS_ERROR;
+  }
+  
+  UTLT_Info("FAR ID: %u", farId);
+
+  if (updateFar->applyAction.presence) {
+    uint8_t new_action = *((uint8_t *)(updateFar->applyAction.value));
+    if (session->far_list[farId].apply_action == FAR_BUFFER) {
+      struct FlushBufferMessage *message;
+      message = (struct FlushBufferMessage *) rte_malloc(NULL, sizeof(struct FlushBufferMessage), 0);
+      if (message == NULL) {
+        printf("Some issue with allocating message memory\n");
+        return STATUS_ERROR;
+      }
+      memset(message, 0, sizeof(struct FlushBufferMessage));
+      message->far = &session->far_list[farId];
+      message->new_action = new_action;
+      onvm_nflib_send_msg_to_nf(2, message);
+      UTLT_Info("FAR Apply Action is changing from BUFFER to %u", new_action);
+    } else {
+      session->far_list[farId].apply_action = new_action;
+      UTLT_Info("FAR Apply Action: %u", session->far_list[farId].apply_action);
+    }
   }
 
 #if 0
