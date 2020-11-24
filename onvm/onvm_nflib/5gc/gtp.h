@@ -261,19 +261,19 @@ static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
   uint32_t teid;
   switch (ret) {
     case v1_with_last_row:
-      printf("v1_with_last_row ");  // Testing.
+      // printf("v1_with_last_row ");  // Testing.
       teid =
           rte_be_to_cpu_32(((struct gtp_hdr_v1_with_last_row *)gtp_hdr)->teid);
       break;
 
     case v1_without_last_row:
-      printf("v1_without_last_row ");  // Testing.
+      // printf("v1_without_last_row ");  // Testing.
       teid = rte_be_to_cpu_32(
           ((struct gtp_hdr_v1_without_last_row *)gtp_hdr)->teid);
       break;
 
     case v2_with_teid:
-      printf("v2_with_teid ");  // Testing.
+      // printf("v2_with_teid ");  // Testing.
       teid = rte_be_to_cpu_32(((struct gtp_hdr_v2_with_teid *)gtp_hdr)->teid);
       break;
 
@@ -288,7 +288,7 @@ static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
       meta->action = ONVM_NF_ACTION_DROP;
       return 0;
   }
-  printf("%" PRIu32 "\n", teid);
+  // printf("%" PRIu32 "\n", teid);
   return teid;
 }
 
