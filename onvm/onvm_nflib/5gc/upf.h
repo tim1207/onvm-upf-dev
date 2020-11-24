@@ -16,6 +16,8 @@
 #define MAX_PDR_RULE 16
 #define MAX_FAR_RULE 8
 
+#define MAX_BUFFER_LENGTH 4
+
 /* Forward Action Rules - Forwarding Parameters */
 typedef struct {
   uint16_t flags;
@@ -50,6 +52,8 @@ typedef struct {
     upf_far_forward_t forward;
     uint16_t bar_id;
   };
+  struct rte_mbuf* buffer[MAX_BUFFER_LENGTH];
+  uint8_t curr_cap;
 } upf_far_t;
 
 #define ABSENT 0
@@ -106,3 +110,8 @@ int PfcpSessionTableInit(void);
 int PfcpSessionTableNFInit(void);
 int UpfAddPfcpSessionBySeid(uint64_t seid);
 void UpfPfcpSessionDeleteBySeid(uint64_t seid);
+
+struct FlushBufferMessage {
+  upf_far_t* far;
+  uint8_t new_action;
+};
