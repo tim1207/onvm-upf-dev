@@ -65,16 +65,19 @@
 
 #define NF_TAG "upf_c"
 
+#define ETHER_IP_UDP_HDR_LEN \
+  (RTE_ETHER_HDR_LEN + 20 + sizeof(struct rte_udp_hdr))
+
 void ProcessN4Message(struct rte_mbuf *pkt) {
   PfcpHeader *pfcpHeader = NULL;
 
-  pfcpHeader =
-      (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, 16 + 8 + 20);
+  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
+                                                     ETHER_IP_UDP_HDR_LEN);
 
   Bufblk rcvd_msg;
   rcvd_msg.buf = pfcpHeader;
-  rcvd_msg.size = pkt->pkt_len - (16 + 8 + 20);
-  rcvd_msg.len = pkt->pkt_len - (16 + 8 + 20);
+  rcvd_msg.size = pkt->pkt_len - (ETHER_IP_UDP_HDR_LEN);
+  rcvd_msg.len = pkt->pkt_len - (ETHER_IP_UDP_HDR_LEN);
 
   Status status;
   Bufblk *bufBlk = NULL;
@@ -108,8 +111,8 @@ void ProcessN4Message(struct rte_mbuf *pkt) {
       // with SEID
       session = UpfSessionFindBySeid(pfcpMessage->header.seid);
     }
+    UTLT_Assert(session, goto freeBuf, "do not find / establish session");
   }
-  UTLT_Assert(session, goto freeBuf, "do not find / establish session");
 
 #if 0
     if (pfcpMessage->header.type != PFCP_SESSION_REPORT_RESPONSE) {
@@ -182,16 +185,13 @@ static int packet_handler(
     struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
   meta->action = ONVM_NF_ACTION_DROP;
-  struct rte_ipv4_hdr *ipv4_hdr;
-  ipv4_hdr = onvm_pkt_ipv4_hdr(pkt);
-  ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, 16);
 
   PfcpHeader *pfcpHeader = NULL;
 
   // TODO(vivek) extract Pfcp body message from IPv4 or IPv6, for now add
   // support for IPv4 only
-  pfcpHeader =
-      (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, 16 + 8 + 20);
+  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
+                                                     ETHER_IP_UDP_HDR_LEN);
   pfcpHeader->length = ntohs(pfcpHeader->length);
 
   // TODO(vivek): verify the PFCP version
@@ -252,6 +252,8 @@ int main(int argc, char *argv[]) {
   argv += arg_offset;
 
   PfcpSessionTableNFInit();
+
+  SetNfContext(nf_local_ctx);
 
   onvm_nflib_run(nf_local_ctx);
 

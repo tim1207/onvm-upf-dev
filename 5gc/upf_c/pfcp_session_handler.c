@@ -6,7 +6,178 @@
 
 #include "onvm_nflib.h"
 
+#include "lib/pfcp_types.h"
+
+#define ETHER_IP_UDP_HDR_LEN \
+  (RTE_ETHER_HDR_LEN + 20 + sizeof(struct rte_udp_hdr))
+
 uint64_t seid_pool = 1;
+struct onvm_nf_local_ctx *ctx;
+
+void SetNfContext(struct onvm_nf_local_ctx *nf_ctx) { ctx = nf_ctx; }
+void onvm_send_pkt(char *buff, int service_id, int buff_length) {
+  uint32_t i;
+  struct rte_mempool *pktmbuf_pool;
+
+  pktmbuf_pool = rte_mempool_lookup(PKTMBUF_POOL_NAME);
+  if (pktmbuf_pool == NULL) {
+    onvm_nflib_stop(ctx);
+    rte_exit(EXIT_FAILURE, "Cannot find mbuf pool!\n");
+  }
+
+  struct onvm_pkt_meta *pmeta;
+  struct rte_ether_hdr *ehdr;
+  struct rte_udp_hdr *udphdr;
+  struct rte_ipv4_hdr *ipv4_hdr;
+
+  struct rte_mbuf *pkt = rte_pktmbuf_alloc(pktmbuf_pool);
+  if (pkt == NULL) {
+    printf("Failed to allocate packets\n");
+    return;
+  }
+
+  rte_pktmbuf_prepend(pkt, buff_length);
+  rte_memcpy(rte_pktmbuf_mtod(pkt, char *), buff, buff_length);
+
+  udphdr = (struct rte_udp_hdr *)rte_pktmbuf_prepend(
+      pkt, sizeof(struct rte_udp_hdr));
+  udphdr->src_port = rte_cpu_to_be_16(8805);
+  udphdr->dst_port = rte_cpu_to_be_16(8805);
+  udphdr->dgram_len = rte_cpu_to_be_16(buff_length + 8);
+
+  ipv4_hdr = (struct rte_ipv4_hdr *)rte_pktmbuf_prepend(
+      pkt, sizeof(struct rte_ipv4_hdr));
+  ipv4_hdr->version_ihl =
+      IPVERSION << 4 | sizeof(struct rte_ipv4_hdr) / RTE_IPV4_IHL_MULTIPLIER;
+  ipv4_hdr->time_to_live = IPDEFTTL;
+  ipv4_hdr->next_proto_id = 17;
+  ipv4_hdr->dst_addr = rte_cpu_to_be_32(2130706433);
+  ipv4_hdr->src_addr = rte_cpu_to_be_32(2130706433);
+  ipv4_hdr->total_length = rte_cpu_to_be_32(
+      buff_length + sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr));
+
+  /*set up ether header and set new packet size*/
+  ehdr = (struct rte_ether_hdr *)rte_pktmbuf_prepend(pkt, RTE_ETHER_HDR_LEN);
+
+  /*using manager mac addr for source
+   *using input string for dest addr
+   */
+
+  if (onvm_get_macaddr(0, &ehdr->s_addr) == -1) {
+    onvm_get_fake_macaddr(&ehdr->s_addr);
+  }
+
+  for (i = 0; i < RTE_ETHER_ADDR_LEN; ++i) {
+    ehdr->d_addr.addr_bytes[i] = i;
+  }
+
+  ehdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+
+  // fill out the meta data of the packet
+  pmeta = onvm_get_pkt_meta(pkt);
+  pmeta->destination = service_id;
+  pmeta->action = ONVM_NF_ACTION_TONF;
+  pkt->hash.rss = 0;
+  pkt->port = 0;
+  pkt->data_len = buff_length + ETHER_IP_UDP_HDR_LEN;  //???
+  /* Copy the packet into the rte_mbuf data section */
+
+  // send out the generated packet
+  int s = onvm_nflib_return_pkt(ctx->nf, pkt);
+}
+
+Status UpfN4BuildAssociationSetupResponse(Bufblk **bufBlkPtr, uint8_t type) {
+  Status status;
+  PfcpMessage pfcpMessage;
+  PFCPAssociationSetupResponse *response = NULL;
+  uint8_t cause;
+  uint16_t upFunctionFeature;
+
+  uint32_t recoveryTime = 123;
+
+  response = &pfcpMessage.pFCPAssociationSetupResponse;
+  memset(&pfcpMessage, 0, sizeof(PfcpMessage));
+  pfcpMessage.pFCPAssociationSetupResponse.presence = 1;
+
+  /* node id */
+  // TODO: IPv6
+  response->nodeID.presence = 1;
+  PfcpNodeId nodeId;
+  nodeId.spare = 0;
+  nodeId.type = PFCP_NODE_ID_IPV4;
+  response->nodeID.len = 1 + 4;
+  response->nodeID.value = &nodeId;
+
+  /* cause */
+  cause = PFCP_CAUSE_REQUEST_ACCEPTED;
+  response->cause.presence = 1;
+  response->cause.value = &cause;
+  response->cause.len = 1;
+
+  /* Recovery Time Stamp */
+  response->recoveryTimeStamp.presence = 1;
+  response->recoveryTimeStamp.len = 4;
+  response->recoveryTimeStamp.value = &recoveryTime;
+
+  PfcpUserPlaneIpResourceInformation upIpResourceInformation;
+  memset(&upIpResourceInformation, 0,
+      sizeof(PfcpUserPlaneIpResourceInformation));
+
+  // teid
+  upIpResourceInformation.teidri = 1;
+  upIpResourceInformation.teidRange = 0;
+
+  // network instence
+  upIpResourceInformation.assoni = 1;
+  uint8_t dnnLen = 0;
+#if 0
+  DNN *dnn;
+  EnvParamsForEachDNN(dnn, Self()->envParams) {
+    dnnLen = strlen(dnn->name);
+    memcpy(upIpResourceInformation.networkInstance, &dnnLen, 1);
+    memcpy(upIpResourceInformation.networkInstance + 1, dnn->name, dnnLen + 1);
+    break;
+  }
+#endif
+
+  // TODO: better algo. to select establish IP
+  int isIpv6 = 0;
+#if 0
+  VirtualPort *port;
+  VirtualDeviceForEachVirtualPort(port, Self()->envParams->virtualDevice) {
+    isIpv6 = (strchr(port->ipStr, ':') ? 1 : 0);
+    if (!upIpResourceInformation.v4 && !isIpv6) {
+      UTLT_Assert(inet_pton(AF_INET, port->ipStr, &upIpResourceInformation.addr4) == 1,
+          continue, "IP address[%s] in VirtualPort is invalid", port->ipStr);
+      upIpResourceInformation.v4 = 1;
+    }
+    /* TODO: IPv6
+       if (!upIpResourceInformation.v6 && isIpv6) {
+       UTLT_Assert(inet_pton(AF_INET6, port->ipStr, &upIpResourceInformation.addr6) == 1,
+       continue, "IP address[%s] in VirtualPort is invalid", port->ipStr);
+       upIpResourceInformation.v6 = 1;
+       }
+       */
+    if (upIpResourceInformation.v4 && upIpResourceInformation.v6)
+      break;
+  }
+#else
+  upIpResourceInformation.v4 = 1;
+#endif
+
+  response->userPlaneIPResourceInformation.presence = 1;
+  response->userPlaneIPResourceInformation.value = &upIpResourceInformation;
+  // TODO: this is only IPv4, no network instence, no source interface
+  response->userPlaneIPResourceInformation.len = 2+4+1+dnnLen;
+
+  pfcpMessage.header.type = type;
+  status = PfcpBuildMessage(bufBlkPtr, &pfcpMessage);
+  UTLT_Assert(*bufBlkPtr, , "buff NULL");
+  UTLT_Assert(status == STATUS_OK, return STATUS_ERROR, "PFCP build error");
+
+  UTLT_Info("PFCP association session setup response built!");
+  return STATUS_OK;
+}
 
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
   UpfSession *session;
@@ -62,12 +233,64 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
 void UpfN4HandleSessionReportResponse(
     PFCPSessionReportResponse *pFCPSessionReportResponse) {}
 
-void UpfN4HandleHeartbeatRequest(HeartbeatRequest *heartbeatRequest) {}
+void UpfN4HandleHeartbeatRequest(HeartbeatRequest *heartbeatRequest) {
+#if 0
+  Status status;
+  PfcpHeader header;
+  Bufblk *bufBlk = NULL;
+
+  UTLT_Info("[PFCP] Heartbeat Request");
+
+  /* Send */
+  memset(&header, 0, sizeof(PfcpHeader));
+  header.type = PFCP_HEARTBEAT_RESPONSE;
+  header.seid = 0;
+
+  status = UpfN4BuildHeartbeatResponse(&bufBlk, header.type);
+  UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+      "N4 build error");
+#endif
+}
 
 void UpfN4HandleHeartbeatResponse(HeartbeatResponse *heartbeatResponse) {}
 
-void UpfN4HandleAssociationSetupRequest(
-    PFCPAssociationSetupRequest *pFCPAssociationSetupRequest) {}
+Status UpfN4HandleAssociationSetupRequest(
+    PFCPAssociationSetupRequest *pFCPAssociationSetupRequest) {
+  Status status;
+  PfcpHeader header;
+  Bufblk *bufBlk = NULL;
+
+  /* Send */
+  memset(&header, 0, sizeof(PfcpHeader));
+  header.type = PFCP_ASSOCIATION_SETUP_RESPONSE;
+  header.seid = 0;
+
+  status = UpfN4BuildAssociationSetupResponse(&bufBlk, header.type);
+  UTLT_Assert(status == STATUS_OK, return STATUS_ERROR, "N4 build error");
+
+  uint32_t headerLen = PFCP_HEADER_LEN - PFCP_SEID_LEN;
+  Bufblk *fullPacket;
+  PfcpHeader *localHeader = NULL;
+
+  fullPacket = BufblkAlloc(1, headerLen);
+  localHeader = fullPacket->buf;
+  fullPacket->len = headerLen;
+
+  memset(localHeader, 0, headerLen);
+  localHeader->version = PFCP_VERSION;
+  localHeader->type = header.type;
+  localHeader->seidP = 0;
+  localHeader->sqn_only = PfcpTransactionId2Sqn(1);
+
+  localHeader->length = rte_cpu_to_be_16(bufBlk->len + headerLen - 4);
+
+  BufblkBuf(fullPacket, bufBlk);
+  BufblkFree(bufBlk);
+
+  onvm_send_pkt(fullPacket->buf, 3, fullPacket->len);
+  UTLT_Info("Sending back the Association setup response");
+  return STATUS_OK;
+}
 
 void UpfN4HandleAssociationUpdateRequest(
     PFCPAssociationUpdateRequest *pFCPAssociationUpdateRequest) {}
@@ -86,14 +309,15 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     UTLT_Error("FAR[%u] does not exist", farId);
     return STATUS_ERROR;
   }
-  
+
   UTLT_Info("FAR ID: %u", farId);
 
   if (updateFar->applyAction.presence) {
     uint8_t new_action = *((uint8_t *)(updateFar->applyAction.value));
     if (session->far_list[farId].apply_action == FAR_BUFFER) {
       struct FlushBufferMessage *message;
-      message = (struct FlushBufferMessage *) rte_malloc(NULL, sizeof(struct FlushBufferMessage), 0);
+      message = (struct FlushBufferMessage *)rte_malloc(
+          NULL, sizeof(struct FlushBufferMessage), 0);
       if (message == NULL) {
         printf("Some issue with allocating message memory\n");
         return STATUS_ERROR;
@@ -459,3 +683,23 @@ Status UpfN4HandleSessionModificationRequest(
 
 void UpfN4HandleSessionDeletionRequest(
     PFCPSessionDeletionRequest *pFCPSessionDeletionRequest) {}
+
+Status UpfN4BuildHeartbeatResponse(Bufblk **bufBlkPtr, uint8_t type) {
+  Status status;
+  PfcpMessage pfcpMessage;
+  HeartbeatResponse *response;
+
+  response = &pfcpMessage.heartbeatResponse;
+  memset(&pfcpMessage, 0, sizeof(PfcpMessage));
+
+  /* Set Recovery Time Stamp */
+  response->recoveryTimeStamp.presence = 1;
+  response->recoveryTimeStamp.len = 4;
+
+  pfcpMessage.header.type = type;
+  status = PfcpBuildMessage(bufBlkPtr, &pfcpMessage);
+  UTLT_Assert(status == STATUS_OK, return STATUS_ERROR, "PFCP build error");
+
+  UTLT_Info("PFCP heartbeat response built!");
+  return STATUS_OK;
+}

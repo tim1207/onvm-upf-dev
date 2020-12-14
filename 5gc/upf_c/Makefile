@@ -55,7 +55,7 @@ SRCS-y += lib/pfcp_message.c
 
 ONVM= $(SRCDIR)/../../onvm
 
-CFLAGS += -O3 $(USER_FLAGS)
+CFLAGS += -O0 -g $(USER_FLAGS) -std=c99
 
 CFLAGS += -I$(ONVM)/onvm_nflib
 CFLAGS += -I$(ONVM)/lib
