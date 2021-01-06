@@ -58,7 +58,8 @@
 
 #define NF_TAG "upf_u"
 
-#define SELF_IP 0
+#undef SELF_IP
+#define SELF_IP 2989009088
 #define PKT_READ_SIZE ((uint16_t)32)
 
 /* For advanced rings scaling */
@@ -100,33 +101,26 @@ upf_pdr_t *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
 upf_far_t *GetFarById(uint16_t id) { return NULL; }
 
 
-uint32_t packet_count = 0;
-
 static int packet_handler(
     __attribute__((unused)) struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
-  printf("===============Packet count %u\n", ++packet_count);
   meta->action = ONVM_NF_ACTION_DROP;
 
   struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
   struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
 
   if (!iph) {
-    printf("IP header null\n");
     iph = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, 16);
   }
 
   if (!iph) {
-    printf("IP header null\n");
     return 0;
-  } else {
-    onvm_pkt_print_ipv4(iph);
   }
 
   upf_pdr_t *pdr;
 
   // Step 1: Identify if it is a uplink packet or downlink packet
-  if (iph->dst_addr == SELF_IP) {  //
+  if (iph->dst_addr != SELF_IP) {  //
     // invariant(dst_port == GTPV1_PORT);
     // Step 2: Get PDR rule
     pdr = GetPdrByUeIpAddress(pkt, iph->dst_addr);
@@ -134,7 +128,6 @@ static int packet_handler(
     // extract TEID from
     // Step 2: Get PDR rule
     uint32_t teid = get_teid_gtp_packet(pkt, udp_header, meta);
-    printf("TEID %u\n", teid);
     pdr = GetPdrByTeid(pkt, teid);
   }
 
@@ -156,10 +149,10 @@ static int packet_handler(
   // TODO(vivek): implement the removal policy
   switch (pdr->outer_header_removal) {
     case OUTER_HEADER_REMOVAL_GTP_IP4: {
-      printf("Removing GTP Header\n");
-      const int outer_hdr_len = sizeof(struct rte_ether_hdr) +
+      int outer_hdr_len = sizeof(struct rte_ether_hdr) +
                                 sizeof(struct rte_ipv4_hdr) +
                                 sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t);
+      outer_hdr_len = 54;
       rte_pktmbuf_adj(pkt, (uint16_t)outer_hdr_len);
 
       // Prepend ethernet header
@@ -191,7 +184,8 @@ static int packet_handler(
         printf("Dropping the packet based on PDR\n");
         break;
       case FAR_FORWARD:
-        printf("Forwarding the packet based on PDR\n");
+	meta->action = ONVM_NF_ACTION_OUT;
+	meta->destination = pkt->port^1;
         // TODO(vivek): Implement forward policy
         break;
       case FAR_BUFFER:
