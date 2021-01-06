@@ -138,6 +138,11 @@ Status UpfN4BuildAssociationSetupResponse(Bufblk **bufBlkPtr, uint8_t type) {
     memcpy(upIpResourceInformation.networkInstance + 1, dnn->name, dnnLen + 1);
     break;
   }
+#else
+  char dnn_name[] = "internet";
+  dnnLen = strlen(dnn_name);
+  memcpy(upIpResourceInformation.networkInstance, &dnnLen, 1);
+  memcpy(upIpResourceInformation.networkInstance + 1, dnn_name, dnnLen + 1);
 #endif
 
   // TODO: better algo. to select establish IP
@@ -162,6 +167,8 @@ Status UpfN4BuildAssociationSetupResponse(Bufblk **bufBlkPtr, uint8_t type) {
       break;
   }
 #else
+  char ip_str[] = "10.200.200.102";
+  inet_pton(AF_INET, ip_str, &upIpResourceInformation.addr4);
   upIpResourceInformation.v4 = 1;
 #endif
 
