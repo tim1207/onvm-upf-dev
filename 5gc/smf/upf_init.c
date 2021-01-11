@@ -41,6 +41,13 @@ UpfOps UpfOpsList[] = {
         .termData = NULL,
     },
     {
+        .name = "Library - Timer Pool",
+        .init = TimerPoolInit,
+        .initData = NULL,
+        .term = TimerFinal,
+        .termData = NULL,
+    },
+    {
         .name = "Library -  PFCP Xact",
         .init = XactInit,
         .initData = NULL,
@@ -117,7 +124,7 @@ static Status ConfigHandle(void *data) {
 static Status XactInit(void *data) {
     Status status = STATUS_OK;
     // init pfcp xact context
-    UTLT_Assert(PfcpXactInit(NULL, UINT32_MAX, UINT32_MAX) == STATUS_OK,
+    UTLT_Assert(PfcpXactInit(&Self()->timerServiceList, UINT32_MAX, UINT32_MAX) == STATUS_OK,
         status |= STATUS_ERROR, "");
 
     return status;

@@ -6,131 +6,127 @@
 #include "pfcp_path.h"
 #include "pfcp_message.h"
 #include "pfcp_types.h"
+#include "pfcp_xact.h"
+
+#include "upf_context.h"
+
+#include "n4_onvm_pfcp_handler.h"
 
 #define LINUX_IP_UDP_HDR_LEN \
   (16 + 20 + sizeof(struct rte_udp_hdr))
 #define ETHER_IP_UDP_HDR_LEN \
   (RTE_ETHER_HDR_LEN + 20 + sizeof(struct rte_udp_hdr))
 
-void ProcessN4Message(struct rte_mbuf *pkt) {
-  PfcpHeader *pfcpHeader = NULL;
-  uint32_t outer_header = 0;
+void ProcessN4Message(struct rte_mbuf *pkt, const uint32_t outerHeader, PfcpNode *upf_) {
+	PfcpHeader *pfcpHeader = NULL;
 
-  if (pkt->l2_type == 1) {
-	  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
-			  ETHER_IP_UDP_HDR_LEN);
-	outer_header = ETHER_IP_UDP_HDR_LEN;
-  } else {
-	  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
-			  LINUX_IP_UDP_HDR_LEN);
-	outer_header = LINUX_IP_UDP_HDR_LEN;
-  }
-  Bufblk rcvd_msg;
-  rcvd_msg.buf = pfcpHeader;
-  rcvd_msg.size = pkt->pkt_len - outer_header;
-  rcvd_msg.len = pkt->pkt_len - outer_header;
+	pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, outerHeader);
 
-  Status status;
-  Bufblk *bufBlk = NULL;
-  Bufblk *recvBufBlk = &rcvd_msg;
-  PfcpMessage *pfcpMessage = NULL;
-#if 0
-	PfcpNode *upf; //TODO(vivek)
+	Bufblk rcvd_msg;
+	rcvd_msg.buf = pfcpHeader;
+	rcvd_msg.size = pkt->pkt_len - outerHeader;
+	rcvd_msg.len = pkt->pkt_len - outerHeader;
+
+	Status status;
+	Bufblk *bufBlk = NULL;
+	Bufblk *recvBufBlk = &rcvd_msg;
+	PfcpNode *upf = upf_; //TODO: Vivek set properly
+	PfcpMessage *pfcpMessage = NULL;
 	PfcpXact *xact = NULL;
-#endif
-#if 0
-  UpfSession *session = NULL;
-#endif
-  UTLT_Assert(recvBufBlk, return, "recv buffer no data");
-  bufBlk = BufblkAlloc(1, sizeof(PfcpMessage));
-  UTLT_Assert(bufBlk, goto freeRecvBuf, "create buffer error");
-  pfcpMessage = bufBlk->buf;
-  UTLT_Assert(pfcpMessage, goto freeBuf, "pfcpMessage assigned error");
+	UpfSession *session = NULL;
 
-  status = PfcpParseMessage(pfcpMessage, recvBufBlk);
-  UTLT_Assert(status == STATUS_OK, goto freeBuf, "PfcpParseMessage error");
+	UTLT_Assert(recvBufBlk, return, "recv buffer no data");
+	bufBlk = BufblkAlloc(1, sizeof(PfcpMessage));
+	UTLT_Assert(bufBlk, goto freeRecvBuf, "create buffer error");
+	pfcpMessage = bufBlk->buf;
+	UTLT_Assert(pfcpMessage, goto freeBuf, "pfcpMessage assigned error");
 
-#if 0
-  if (pfcpMessage->header.seidP) {
-    // if SEID presence
-    if (!pfcpMessage->header.seid) {
-      // without SEID
-      if (pfcpMessage->header.type == PFCP_SESSION_ESTABLISHMENT_REQUEST) {
-        session = UpfSessionAddByMessage(pfcpMessage);
-      } else {
-        UTLT_Assert(0, goto freeBuf, "no SEID but not SESSION ESTABLISHMENT");
-      }
-    } else {
-      // with SEID
-      session = UpfSessionFindBySeid(pfcpMessage->header.seid);
-    }
-    UTLT_Assert(session, goto freeBuf, "do not find / establish session");
-  }
+	status = PfcpParseMessage(pfcpMessage, recvBufBlk);
+	UTLT_Assert(status == STATUS_OK, goto freeBuf, "PfcpParseMessage error");
 
-    if (pfcpMessage->header.type != PFCP_SESSION_REPORT_RESPONSE) {
+	if (pfcpMessage->header.seidP) {
+
+		// if SEID presence
+		if (!pfcpMessage->header.seid) {
+			// without SEID
+			if (pfcpMessage->header.type == PFCP_SESSION_ESTABLISHMENT_REQUEST) {
+				session = UpfSessionAddByMessage(pfcpMessage);
+			} else {
+				UTLT_Assert(0, goto freeBuf,
+						"no SEID but not SESSION ESTABLISHMENT");
+			}
+		} else {
+			// with SEID
+			session = UpfSessionFindBySeid(pfcpMessage->header.seid);
+		}
+
+		UTLT_Assert(session, goto freeBuf,
+				"do not find / establish session");
+
+		if (pfcpMessage->header.type != PFCP_SESSION_REPORT_RESPONSE) {
 			session->pfcpNode = upf;
-    }
+		}
 
 		status = PfcpXactReceive(session->pfcpNode,
 				&pfcpMessage->header, &xact);
-    UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
-  } else {
+		UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
+	} else {
 		status = PfcpXactReceive(upf, &pfcpMessage->header, &xact);
-    UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
-  }
-#endif
+		UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
+	}
 
-  switch (pfcpMessage->header.type) {
-    case PFCP_HEARTBEAT_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP heartbeat request");
-      // UpfN4HandleHeartbeatRequest(&pfcpMessage->heartbeatRequest);
-      break;
-    case PFCP_HEARTBEAT_RESPONSE:
-      UTLT_Info("[PFCP] Handle PFCP heartbeat response");
-      // UpfN4HandleHeartbeatResponse(&pfcpMessage->heartbeatResponse);
-      break;
-    case PFCP_ASSOCIATION_SETUP_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP association setup request");
-      // UpfN4HandleAssociationSetupRequest(
-      //     &pfcpMessage->pFCPAssociationSetupRequest);
-      break;
-    case PFCP_ASSOCIATION_UPDATE_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP association update request");
-      // UpfN4HandleAssociationUpdateRequest(
-      //    &pfcpMessage->pFCPAssociationUpdateRequest);
-      break;
-    case PFCP_ASSOCIATION_RELEASE_RESPONSE:
-      UTLT_Info("[PFCP] Handle PFCP association release response");
-      // UpfN4HandleAssociationReleaseRequest(
-      //     &pfcpMessage->pFCPAssociationReleaseRequest);
-      break;
-    case PFCP_SESSION_ESTABLISHMENT_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP session establishment request");
-      // UpfN4HandleSessionEstablishmentRequest(
-      //     session, &pfcpMessage->pFCPSessionEstablishmentRequest);
-      break;
-    case PFCP_SESSION_MODIFICATION_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP session modification request");
-      // UpfN4HandleSessionModificationRequest(
-      //     session, &pfcpMessage->pFCPSessionModificationRequest);
-      break;
-    case PFCP_SESSION_DELETION_REQUEST:
-      UTLT_Info("[PFCP] Handle PFCP session deletion request");
-      // UpfN4HandleSessionDeletionRequest(
-      //     &pfcpMessage->pFCPSessionDeletionRequest);
-      break;
-    case PFCP_SESSION_REPORT_RESPONSE:
-      UTLT_Info("[PFCP] Handle PFCP session report response");
-      // UpfN4HandleSessionReportResponse(&pfcpMessage->pFCPSessionReportResponse);
-      break;
-    default:
-      UTLT_Error("No implement pfcp type: %d", pfcpMessage->header.type);
-  }
+	switch (pfcpMessage->header.type) {
+		case PFCP_HEARTBEAT_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP heartbeat request");
+			UpfN4HandleHeartbeatRequest(xact, &pfcpMessage->heartbeatRequest);
+			break;
+		case PFCP_HEARTBEAT_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP heartbeat response");
+			UpfN4HandleHeartbeatResponse(xact, &pfcpMessage->heartbeatResponse);
+			break;
+		case PFCP_ASSOCIATION_SETUP_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP association setup request");
+			UpfN4HandleAssociationSetupRequest(xact,
+					&pfcpMessage->pFCPAssociationSetupRequest);
+			break;
+		case PFCP_ASSOCIATION_UPDATE_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP association update request");
+			UpfN4HandleAssociationUpdateRequest(xact,
+					&pfcpMessage->pFCPAssociationUpdateRequest);
+			break;
+		case PFCP_ASSOCIATION_RELEASE_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP association release response");
+			UpfN4HandleAssociationReleaseRequest(xact,
+					&pfcpMessage->pFCPAssociationReleaseRequest);
+			break;
+		case PFCP_SESSION_ESTABLISHMENT_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session establishment request");
+			UpfN4HandleSessionEstablishmentRequest(session, xact,
+					&pfcpMessage->pFCPSessionEstablishmentRequest);
+			break;
+		case PFCP_SESSION_MODIFICATION_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session modification request");
+			UpfN4HandleSessionModificationRequest(session, xact,
+					&pfcpMessage->pFCPSessionModificationRequest);
+			break;
+		case PFCP_SESSION_DELETION_REQUEST:
+			UTLT_Info("[PFCP] Handle PFCP session deletion request");
+			UpfN4HandleSessionDeletionRequest(session, xact,
+					&pfcpMessage->pFCPSessionDeletionRequest);
+			break;
+		case PFCP_SESSION_REPORT_RESPONSE:
+			UTLT_Info("[PFCP] Handle PFCP session report response");
+			UpfN4HandleSessionReportResponse(session, xact,
+					&pfcpMessage->pFCPSessionReportResponse);
+			break;
+		default:
+			UTLT_Error("No implement pfcp type: %d", pfcpMessage->header.type);
+	}
 freeBuf:
-  PfcpStructFree(pfcpMessage);
-  BufblkFree(bufBlk);
+	PfcpStructFree(pfcpMessage);
+	BufblkFree(bufBlk);
 freeRecvBuf:
-  BufblkFree(recvBufBlk);
+	BufblkFree(recvBufBlk);
 }
 
 int packet_handler(
@@ -140,16 +136,14 @@ int packet_handler(
   meta->action = ONVM_NF_ACTION_DROP;
 
   PfcpHeader *pfcpHeader = NULL;
+  uint32_t outerHeader = LINUX_IP_UDP_HDR_LEN;
 
   // TODO(vivek) extract Pfcp body message from IPv4 or IPv6, for now add
   // support for IPv4 only
   if (pkt->l2_type == 1) {
-	  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
-			  ETHER_IP_UDP_HDR_LEN);
-  } else {
-	  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *,
-			  LINUX_IP_UDP_HDR_LEN);
+	  outerHeader = ETHER_IP_UDP_HDR_LEN;
   }
+  pfcpHeader = (PfcpHeader *)rte_pktmbuf_mtod_offset(pkt, PfcpHeader *, outerHeader);
   pfcpHeader->length = ntohs(pfcpHeader->length);
 
   // TODO(vivek): verify the PFCP version
@@ -169,7 +163,49 @@ int packet_handler(
     return 0;
   }
 
-  ProcessN4Message(pkt);
+  struct rte_ipv4_hdr * iph;
+  iph = (struct rte_ipv4_hdr *) rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, outerHeader);
+
+  SockAddr from;
+  from.s4.sin_family = AF_INET;
+  from.s4.sin_addr.s_addr = (unsigned long) iph->dst_addr;
+  from.s4.sin_port = 8805;
+  PfcpNode *upf;
+  Sock *sock;
+  upf = PfcpFindNodeSockAddr(&Self()->upfN4List, &from);
+  if (!upf) {
+	  PfcpFSeid fSeid;
+	  memset(&fSeid, 0, sizeof(fSeid));
+	  fSeid.v4 = 1;
+	  //fSeid.seid = 0; // TOOD: check SEID value
+	  fSeid.addr4 = from.s4.sin_addr;
+
+	  // TODO: check noIpv4, noIpv6, preferIpv4, originally from context.no_ipv4
+	  upf = PfcpAddNodeWithSeid(&Self()->upfN4List, &fSeid,
+			  Self()->pfcpPort, 0, 1, 0);
+	  if (!upf) {
+		  // if upf == NULL (allocate error)
+		  // Count size of upfN4List
+		  int numOfUpf = 0;
+		  PfcpNode *n4Node , *nextNode = NULL;
+
+		  ListForEachSafe(n4Node, nextNode, &Self()->upfN4List) {
+			  ++numOfUpf;
+		  }
+
+		  UTLT_Error("PFCP Node allocate error, "
+				  "there may be too many SMF: %d", numOfUpf);
+		  return STATUS_ERROR;
+	  }
+
+	  upf->sock = Self()->pfcpSock;
+  }
+
+  if (!upf) {
+	UTLT_Info("UPF is null");
+  }
+
+  ProcessN4Message(pkt, outerHeader, upf);
 
   return 0;
 }
