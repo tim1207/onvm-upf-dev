@@ -121,31 +121,18 @@ Status SelectBufblkOption(Bufblk *bufblk, int opt) {
 }
 
 Status BufblkPoolInit() {
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufblkPool, MAX_NUM_OF_BUFBLK_POOL);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool64, MAX_NUM_OF_BUFBLK_POOL_64);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool128, MAX_NUM_OF_BUFBLK_POOL_128);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool256, MAX_NUM_OF_BUFBLK_POOL_256);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool512, MAX_NUM_OF_BUFBLK_POOL_512);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool1024, MAX_NUM_OF_BUFBLK_POOL_1024);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool2048, MAX_NUM_OF_BUFBLK_POOL_2048);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool4096, MAX_NUM_OF_BUFBLK_POOL_4096);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool8192, MAX_NUM_OF_BUFBLK_POOL_8192);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool16384, MAX_NUM_OF_BUFBLK_POOL_16384);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool32768, MAX_NUM_OF_BUFBLK_POOL_32768);
-	printf("Vivek here%d\n", __LINE__);
     PoolInit(&bufPool65536, MAX_NUM_OF_BUFBLK_POOL_65536);
-	printf("Vivek here%d\n", __LINE__);
 
     return STATUS_OK;
 }
