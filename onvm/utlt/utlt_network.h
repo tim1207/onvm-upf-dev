@@ -78,6 +78,7 @@ typedef struct _SockNode {
 // Socket
 Status SockPoolInit();
 Status SockPoolFinal();
+Sock *SocketAlloc();
 Sock *SockCreate(int domain, int type, int protocol);
 Status SockFree(Sock *sock);
 Status SockListFree(ListHead *list);

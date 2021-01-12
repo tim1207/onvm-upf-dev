@@ -19,8 +19,6 @@
 PoolDeclare(sockPool, Sock, MAX_NUM_OF_SOCK);
 PoolDeclare(sockNodePool, SockNode, MAX_NUM_OF_SOCK_NODE);
 
-Sock *SocketAlloc();
-
 Status SockPoolInit() {
     PoolInit(&sockPool, MAX_NUM_OF_SOCK);
     PoolInit(&sockNodePool, MAX_NUM_OF_SOCK_NODE);
