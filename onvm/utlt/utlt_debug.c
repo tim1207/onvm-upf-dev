@@ -34,10 +34,18 @@ int UTLT_LogPrint(int level, const char *filename, const int line,
                   const char *funcname, const char *fmt, ...) {
     static char buffer[MAX_SIZE_OF_BUFFER];
 
-    unsigned int cnt, vspCnt;
+    unsigned int cnt = 0, vspCnt = 0;
+    if (reportCaller == REPORTCALLER_TRUE) {
+        cnt = snprintf(buffer, sizeof(buffer), " (%s:%d %s) ", filename, line, funcname);
+        if (cnt < 0) {
+            fprintf(stderr, "sprintf in UTLT_LogPrint error : %s\n", strerror(errno));
+            return STATUS_ERROR;
+        }
+    }
+
     va_list vl;
     va_start(vl, fmt);
-    vspCnt = vsnprintf(buffer, sizeof(buffer), fmt, vl);
+    vspCnt = vsnprintf(buffer + cnt, sizeof(buffer) - cnt, fmt, vl);
     if (vspCnt < 0) {
         fprintf(stderr, "vsnprintf in UTLT_LogPrint error : %s\n", strerror(errno));
         va_end(vl);
@@ -47,13 +55,6 @@ int UTLT_LogPrint(int level, const char *filename, const int line,
     }
     va_end(vl);
 
-    if (reportCaller == REPORTCALLER_TRUE) {
-        cnt = snprintf(buffer + vspCnt, sizeof(buffer) - vspCnt, " (%s:%d %s)", filename, line, funcname);
-        if (cnt < 0) {
-            fprintf(stderr, "sprintf in UTLT_LogPrint error : %s\n", strerror(errno));
-            return STATUS_ERROR;
-        }
-    }
 
     switch(level) {
         case 0 :
