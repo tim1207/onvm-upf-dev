@@ -49,11 +49,15 @@ RTE_TARGET ?= x86_64-native-linuxapp-gcc
 LIB    = libpfcp.a
 
 # all source are stored in SRCS-y
-SRCS-y := pfcp_convert.c  pfcp_message.c  pfcp_node.c  pfcp_path.c  pfcp_types.c  pfcp_xact.c
+SRCS-y := pfcp_convert.c  pfcp_message.c  pfcp_node.c  pfcp_path.c  pfcp_types.c  pfcp_xact.c onvm_output.c
 
 CFLAGS += -O3 $(USER_FLAGS)
 CFLAGS += -I$(ONVM_HOME)/onvm/logger/
+CFLAGS += -I$(ONVM_HOME)/onvm/onvm_nflib/
+CFLAGS += -I$(ONVM_HOME)/onvm/lib/
 CFLAGS += -I$(ONVM_HOME)/onvm/utlt/
+LDFLAGS += $(ONVM_HOME)/onvm/onvm_nflib/x86_64-native-linuxapp-gcc/libonvm.a
+LDFLAGS += $(ONVM_HOME)/onvm/lib/x86_64-native-linuxapp-gcc/libonvmhelper.a
 LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
 LDFLAGS += $(ONVM_HOME)/onvm/utlt/libutlt.a -lm
 

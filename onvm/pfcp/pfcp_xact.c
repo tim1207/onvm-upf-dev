@@ -624,6 +624,8 @@ Status PfcpXactCommit(PfcpXact *xact) {
     status = PfcpSend(xact->gnode, bufBlk);
     UTLT_Assert(status == STATUS_OK, return STATUS_ERROR, "PfcpSend error");
 
+    PfcpXactDelete(xact);
+
     return STATUS_OK;
 }
 
@@ -745,8 +747,6 @@ PfcpXact *PfcpXactFindByTransactionId(PfcpNode *gnode, uint8_t type, uint32_t tr
                 list = &gnode->localList;
                 xact = ListFirst(&gnode->localList);
             }
-
-                
             break;
 
         default:
