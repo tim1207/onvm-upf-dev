@@ -17,8 +17,8 @@
 #include "upf_config.h"
 #if 0
 #include "up/up_path.h"
-#include "n4/n4_pfcp_path.h"
 #endif
+#include "n4_onvm_pfcp_path.h"
 #include "pfcp_xact.h"
 
 #include "updk/env.h"
@@ -27,8 +27,8 @@
 
 static Status ConfigHandle(void *data);
 
-static Status XactInit(void *data);
-static Status XactTerm(void *data);
+static Status PfcpInit(void *data);
+static Status PfcpTerm(void *data);
 
 static char configFilePath[MAX_FILE_PATH_STRLEN] = "./config/upfcfg.yaml";
 
@@ -48,10 +48,10 @@ UpfOps UpfOpsList[] = {
         .termData = NULL,
     },
     {
-        .name = "Library -  PFCP Xact",
-        .init = XactInit,
+        .name = "Library - Socket Pool",
+        .init = SockPoolInit,
         .initData = NULL,
-        .term = XactTerm,
+        .term = SockPoolFinal,
         .termData = NULL,
     },
     {
@@ -62,10 +62,17 @@ UpfOps UpfOpsList[] = {
         .termData = NULL,
     },
     {
-        .name = "UPF - Config",
+        .name = "UPF - Config Handle",
         .init = ConfigHandle,
         .initData = NULL,
         .term = NULL,
+        .termData = NULL,
+    },
+    {
+        .name = "UPF - PFCP",
+        .init = PfcpInit,
+        .initData = NULL,
+        .term = PfcpTerm,
         .termData = NULL,
     },
 };
@@ -121,18 +128,26 @@ static Status ConfigHandle(void *data) {
     return STATUS_OK;
 }
 
-static Status XactInit(void *data) {
+static Status PfcpInit(void *data) {
     Status status = STATUS_OK;
+    UTLT_Assert(PfcpServerInit() == STATUS_OK,
+        status |= STATUS_ERROR, "");
+
     // init pfcp xact context
-    UTLT_Assert(PfcpXactInit(&Self()->timerServiceList, UINT32_MAX, UINT32_MAX) == STATUS_OK,
+    UTLT_Assert(PfcpXactInit(&Self()->timerServiceList,
+                    0, 0) == STATUS_OK,
         status |= STATUS_ERROR, "");
 
     return status;
 }
 
-static Status XactTerm(void *data) {
+static Status PfcpTerm(void *data) {
     Status status = STATUS_OK;
     UTLT_Assert(PfcpXactTerminate() == STATUS_OK,
         status |= STATUS_ERROR, "");
+
+    UTLT_Assert(PfcpServerTerminate() == STATUS_OK,
+        status |= STATUS_ERROR, "");
+
     return status;
 }

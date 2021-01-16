@@ -20,6 +20,8 @@
 #include "upf_context.h"
 #include "n4_onvm_pfcp_path.h"
 
+#include "onvm_output.h"
+
 
 static Status parseArgs(int argc, char *argv[]);
 static Status checkPermission();
@@ -47,11 +49,14 @@ int main(int argc, char *argv[]) {
 	}
     }
 
+    OnvmSetNfContext(nf_local_ctx);
+
     argc -= arg_offset;
     argv += arg_offset;
 
     UTLT_Assert(parseArgs(argc, argv) == STATUS_OK, return STATUS_ERROR, 
                 "Error parsing args");
+
     if (checkPermission() != STATUS_OK) {
         return STATUS_ERROR;
     }
@@ -63,7 +68,6 @@ int main(int argc, char *argv[]) {
     onvm_nflib_run(nf_local_ctx);
 
     onvm_nflib_stop(nf_local_ctx);
-    printf("If we reach here, program is ending\n");
 
     status = UpfTerm();
     UTLT_Assert(status == STATUS_OK, returnStatus = STATUS_ERROR,
@@ -77,7 +81,6 @@ static Status parseArgs(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "f:h")) != -1) {
         switch (opt) {
             case 'f':
-                UTLT_Info("updating config file %s", optarg);
                 UpfSetConfigPath(optarg);
                 break;
 

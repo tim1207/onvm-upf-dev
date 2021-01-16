@@ -75,8 +75,6 @@ Status UpfContextInit() {
     PfcpNodeInit(); // init pfcp node for upfN4List (it will used pfcp node)
     TimerListInit(&self.timerServiceList);
 
-    // TODO: Read from config
-    strncpy(self.buffSockPath, "/tmp/free5gc_unix_sock", MAX_SOCK_PATH_LEN);
     self.sessionHash = HashMake();
     self.bufPacketHash = HashMake();
 
