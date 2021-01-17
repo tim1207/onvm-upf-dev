@@ -20,7 +20,7 @@
 #include "upf_context.h"
 #include "n4_onvm_pfcp_path.h"
 
-#include "onvm_output.h"
+#include "pfcp_path.h"
 
 
 static Status parseArgs(int argc, char *argv[]);

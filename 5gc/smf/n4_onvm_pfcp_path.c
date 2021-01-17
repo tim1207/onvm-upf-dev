@@ -87,9 +87,6 @@ int packet_handler(
         upf->sock = Self()->pfcpSock;
 	memcpy(&(upf->sock->remoteAddr), &from, sizeof(from));
     }
-    UTLT_Info("Received packet from: %s:%d", GetIP(&from), GetPort(&from));
-    UTLT_Info("Received packet from: %s:%d", GetIP(&(upf->sock->remoteAddr)), GetPort(&(upf->sock->remoteAddr)));
-    UTLT_Info("Received packet to: %s:%d", GetIP(&(upf->sock->localAddr)), GetPort(&(upf->sock->localAddr)));
 
     Event event;
     Status status;
