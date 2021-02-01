@@ -48,7 +48,6 @@
 ******************************************************************************/
 
 #include "onvm_mgr/onvm_init.h"
-#include "5gc/upf.h"
 
 /********************************Global variables*****************************/
 
@@ -264,8 +263,6 @@ init(int argc, char *argv[]) {
         onvm_sc_print(default_chain);
 
         onvm_flow_dir_init();
-
-        PfcpSessionTableInit();
         return 0;
 }
 
