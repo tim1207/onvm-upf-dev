@@ -222,7 +222,7 @@ typedef struct {
  * @activatePredefinedRules: Octect string contains one Predefined Rules name. Several IEs
  *     with the same IE type may be present to represent multiple "Activate Predefined Rules" names.
  */
-typedef struct UPDK_PDR {
+typedef struct {
     struct {
         uint16_t seid:1;
         uint16_t pdrId:1;
@@ -256,8 +256,6 @@ typedef struct UPDK_PDR {
 
     // TODO: Need to handle multiple DeactivatePredefinedRules, dynamic alloc?
     char     deactivatePredefinedRules[0x40];
-
-    struct UPDK_PDR *next;
 } UPDK_PDR;
 
 #endif /* __UPDK_RULE_PDR_H__ */
