@@ -115,7 +115,7 @@ enum {
     UPDK_FAR_APPLY_ACTION_MAX,
 };
 
-typedef struct {
+typedef struct UPDK_FAR {
     struct {
         uint8_t seid:1;
         uint8_t farId:1;
@@ -133,6 +133,8 @@ typedef struct {
     UPDK_ForwardingParameters forwardingParameters;
     UPDK_DuplicatingParameters duplicatingParameters;
     uint8_t barId;
+
+    struct UPDK_FAR *next;
 } UPDK_FAR;
 
 #endif /* __UPDK_RULE_FAR_H__ */
