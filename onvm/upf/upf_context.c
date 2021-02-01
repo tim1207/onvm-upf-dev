@@ -20,8 +20,6 @@
 #include "pfcp_types.h"
 #include "pfcp_xact.h"
 
-#include "up/up_match.h"
-
 #include "updk/env.h"
 #include "updk/init.h"
 #include "updk/rule.h"

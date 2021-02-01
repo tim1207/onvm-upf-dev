@@ -51,7 +51,7 @@ RTE_TARGET ?= x86_64-native-linuxapp-gcc
 APP = smf
 
 # all source are stored in SRCS-y
-SRCS-y := upf.c upf_init.c n4_onvm_pfcp_path.c upf_context.c upf_config.c n4_onvm_pfcp_handler.c n4_onvm_pfcp_build.c n4_dispatcher.c
+SRCS-y := upf.c upf_init.c n4_onvm_pfcp_path.c upf_config.c n4_onvm_pfcp_handler.c n4_onvm_pfcp_build.c n4_dispatcher.c
 
 ONVM= $(SRCDIR)/../../onvm
 
@@ -63,8 +63,10 @@ CFLAGS += -I$(ONVM_HOME)/onvm/logger/
 CFLAGS += -I$(ONVM_HOME)/onvm/utlt/
 CFLAGS += -I$(ONVM_HOME)/onvm/pfcp/
 CFLAGS += -I$(ONVM_HOME)/onvm/updk/
+CFLAGS += -I$(ONVM_HOME)/onvm/upf/
 LDFLAGS += $(ONVM)/onvm_nflib/$(RTE_TARGET)/libonvm.a
 LDFLAGS += $(ONVM)/lib/$(RTE_TARGET)/lib/libonvmhelper.a -lm
+LDFLAGS += $(ONVM_HOME)/onvm/upf/$(RTE_TARGET)/lib/libupf.a
 LDFLAGS += $(ONVM_HOME)/onvm/pfcp/$(RTE_TARGET)/lib/libpfcp.a
 LDFLAGS += $(ONVM_HOME)/onvm/utlt/$(RTE_TARGET)/lib/libutlt.a -lrt
 LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
