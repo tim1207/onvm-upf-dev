@@ -15,9 +15,6 @@
 #include "utlt_network.h"
 #include "upf_context.h"
 #include "upf_config.h"
-#if 0
-#include "up/up_path.h"
-#endif
 #include "n4_onvm_pfcp_path.h"
 #include "pfcp_xact.h"
 

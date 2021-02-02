@@ -12,15 +12,11 @@
 #include "pfcp_xact.h"
 #include "pfcp_convert.h"
 #include "n4_onvm_pfcp_build.h"
-#if 0
-#include "up/up_path.h"
-#endif
 
 #include "updk/rule.h"
 #include "updk/rule_pdr.h"
 #include "updk/rule_far.h"
 
-#if 0
 /*
  * Note: When apply a IE from PDR or FAR, you should check all
  * "_Convert*TlvToRule" if they need to be modified.
@@ -221,7 +217,6 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
 
     return STATUS_OK;
 }
-#endif
 
 Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
     UTLT_Debug("Handle Create PDR");
@@ -234,33 +229,24 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
                 "Pdi not exist");
     UTLT_Assert(createPdr->pDI.sourceInterface.presence,
                 return STATUS_ERROR, "PDI SourceInterface not presence");
-#if 0
-    UpfPDR upfPdr;
-    memset(&upfPdr, 0, sizeof(UpfPDR));
 
     uint16_t pdrID = ntohs(*((uint16_t*) createPdr->pDRID.value));
-    UTLT_Assert(UpfPDRFindByID(pdrID, &upfPdr), return STATUS_ERROR, "PDR ID[%u] does exist in UPF Context", pdrID);
 
-    // TODO: Need to store the rule in UPF
+    UpfPDR *upfPdr = UpfPDRFindByID(session, pdrID);
+    UTLT_Assert(upfPdr == NULL, return STATUS_ERROR, "PDR ID[%u] does exist in UPF Context", pdrID);
 
-    UTLT_Assert(_ConvertCreatePDRTlvToRule(&upfPdr, createPdr) == STATUS_OK,
+    upfPdr = rte_calloc(NULL, 1, sizeof(UpfPDR), 0);
+
+    UTLT_Assert(_ConvertCreatePDRTlvToRule(upfPdr, createPdr) == STATUS_OK,
         return STATUS_ERROR, "Convert PDR TLV To Rule is failed");
 
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelCreatePDR(&upfPdr) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelCreatePDR failed");
-
     // Register PDR to Session
-    UTLT_Assert(UpfPDRRegisterToSession(session, &upfPdr),
-        return STATUS_ERROR, "UpfPDRRegisterToSession failed");
-
-    // Set buff relate pdr to session
-    UpfBufPacketAdd(session, pdrID);
-#endif
+    UTLT_Assert(UpfPDRRegisterToSession(session, upfPdr),
+                return STATUS_ERROR,
+                "UpfPDRRegisterToSession failed");
     return STATUS_OK;
 }
 
-#if 0
 Status _ConvertCreateFARTlvToRule(UpfFAR *upfFar, CreateFAR *createFar) {
     UTLT_Assert(upfFar && createFar, return STATUS_ERROR,
         "UpfFAR or CreateFAR pointer should not be NULL");
@@ -350,7 +336,6 @@ Status _ConvertCreateFARTlvToRule(UpfFAR *upfFar, CreateFAR *createFar) {
 
     return STATUS_OK;
 }
-#endif
 
 Status UpfN4HandleCreateFar(UpfSession *session, CreateFAR *createFar) {
     UTLT_Debug("Handle Create FAR");
@@ -360,31 +345,23 @@ Status UpfN4HandleCreateFar(UpfSession *session, CreateFAR *createFar) {
     UTLT_Assert(createFar->applyAction.presence,
                 return STATUS_ERROR, "Apply Action not presence");
 
-#if 0
-    UpfFAR upfFar;
-    memset(&upfFar, 0, sizeof(UpfFAR));
-
     uint32_t farID = ntohl(*((uint32_t*) createFar->fARID.value));
-    UTLT_Assert(UpfFARFindByID(farID, &upfFar), return STATUS_ERROR, "FAR ID[%u] does exist in UPF Context", farID);
 
-    // TODO: Need to store the rule in UPF
-    
+    UpfFAR *upfFar = UpfFARFindByID(session, farID);
+    UTLT_Assert(upfFar == NULL, return STATUS_ERROR, "FAR ID[%u] does exist in UPF Context", farID);
 
-    UTLT_Assert(_ConvertCreateFARTlvToRule(&upfFar, createFar) == STATUS_OK,
+    upfFar = rte_calloc(NULL, 1, sizeof(UpfFAR), 0);
+
+    UTLT_Assert(_ConvertCreateFARTlvToRule(upfFar, createFar) == STATUS_OK,
         return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
 
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelCreateFAR(&upfFar) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelCreateFAR failed");
-    
     // Register FAR to Session
-    UTLT_Assert(UpfFARRegisterToSession(session, &upfFar),
-        return STATUS_ERROR, "UpfFARRegisterToSession failed");
-#endif
+    UTLT_Assert(UpfFARRegisterToSession(session, upfFar),
+                return STATUS_ERROR,
+                "UpfFARRegisterToSession failed");
     return STATUS_OK;
 }
 
-#if 0
 Status _ConvertUpdatePDRTlvToRule(UpfPDR *upfPdr, UpdatePDR *updatePDR) {
     UTLT_Assert(upfPdr && updatePDR, return STATUS_ERROR,
         "UpfPDR or UpdatePDR pointer should not be NULL");
@@ -582,7 +559,6 @@ Status _ConvertUpdatePDRTlvToRule(UpfPDR *upfPdr, UpdatePDR *updatePDR) {
 
     return STATUS_OK;
 }
-#endif
 
 Status UpfN4HandleUpdatePdr(UpfSession *session, UpdatePDR *updatePdr) {
     UTLT_Debug("Handle Update PDR");
@@ -590,20 +566,14 @@ Status UpfN4HandleUpdatePdr(UpfSession *session, UpdatePDR *updatePdr) {
     UTLT_Assert(updatePdr->pDRID.presence == 1,
                 return STATUS_ERROR, "updatePDR no pdrId");
 
-#if 0
-    UpfPDR upfPdr;
-    memset(&upfPdr, 0, sizeof(UpfPDR));
-
     uint16_t pdrID = ntohs(*((uint16_t *)updatePdr->pDRID.value));
-    UTLT_Assert(!UpfPDRFindByID(pdrID, &upfPdr), return STATUS_ERROR, "PDR ID[%u] does NOT exist in UPF Context", pdrID);
+    UpfPDR *upfPdr = UpfPDRFindByID(session, pdrID);
+    UTLT_Assert(upfPdr != NULL, return STATUS_ERROR, "PDR ID[%u] does NOT exist in UPF Context", pdrID);
 
-    UTLT_Assert(_ConvertUpdatePDRTlvToRule(&upfPdr, updatePdr) == STATUS_OK,
+    UTLT_Assert(_ConvertUpdatePDRTlvToRule(upfPdr, updatePdr) == STATUS_OK,
         return STATUS_ERROR, "Convert PDR TLV To Rule is failed");
 
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelUpdatePDR(&upfPdr) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelUpdatePDR failed");
-
+#ifdef CHECK
     // Register PDR to Session
     UTLT_Assert(UpfPDRRegisterToSession(session, &upfPdr),
         return STATUS_ERROR, "UpfPDRRegisterToSession failed");
@@ -611,7 +581,6 @@ Status UpfN4HandleUpdatePdr(UpfSession *session, UpdatePDR *updatePdr) {
     return STATUS_OK;
 }
 
-#if 0
 Status _ConvertUpdateFARTlvToRule(UpfFAR *upfFar, UpdateFAR *updateFAR) {
     UTLT_Assert(upfFar && updateFAR, return STATUS_ERROR,
         "UpfFAR or UpdateFAR pointer should not be NULL");
@@ -701,7 +670,6 @@ Status _ConvertUpdateFARTlvToRule(UpfFAR *upfFar, UpdateFAR *updateFAR) {
 
     return STATUS_OK;
 }
-#endif
 
 Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     UTLT_Debug("Handle Update FAR");
@@ -709,28 +677,16 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     UTLT_Assert(updateFar->fARID.presence,
                 return STATUS_ERROR, "Far ID not presence");
 
-#if 0
-    UpfFAR upfFar;
-    memset(&upfFar, 0, sizeof(UpfFAR));
-
     uint32_t farID = ntohl(*((uint32_t *)updateFar->fARID.value));
-    UTLT_Assert(!UpfFARFindByID(farID, &upfFar), return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", farID);
 
-    UTLT_Assert(_ConvertUpdateFARTlvToRule(&upfFar, updateFar) == STATUS_OK,
+
+    UpfFAR *upfFar = UpfFARFindByID(session, farID);
+    UTLT_Assert(upfFar != NULL, return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", farID);
+
+    UTLT_Assert(_ConvertUpdateFARTlvToRule(upfFar, updateFar) == STATUS_OK,
         return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
 
-    // Get old apply action to check its changing
-    uint8_t oldAction;
-    UTLT_Assert(HowToHandleThisPacket(farID, &oldAction) == STATUS_OK, return STATUS_ERROR, "Can NOT find origin FAR action");
-
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelUpdateFAR(&upfFar) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelUpdateFAR failed");
-
-    // Register FAR to Session
-    UTLT_Assert(UpfFARRegisterToSession(session, &upfFar),
-        return STATUS_ERROR, "UpfFARRegisterToSession failed");
-
+#if HANDLE_BUFFER
     // Buffered packet handle
     if ((oldAction & PFCP_FAR_APPLY_ACTION_BUFF)) {
         Sock *sock = &Self()->upSock;
@@ -762,16 +718,6 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     return STATUS_OK;
 }
 
-#if 0
-Status _ConvertRemovePDRTlvToRule(UpfPDR *upfPdr, uint16_t nPDRID) {
-    // TODO: Need to Find the PDR stored in UPF
-    upfPdr->flags.pdrId = 1;
-    upfPdr->pdrId = ntohs(nPDRID);
-
-    return STATUS_OK;
-}
-#endif
-
 Status UpfN4HandleRemovePdr(UpfSession *session, uint16_t nPDRID) {
     uint16_t pdrID = ntohs(nPDRID);
 
@@ -780,42 +726,15 @@ Status UpfN4HandleRemovePdr(UpfSession *session, uint16_t nPDRID) {
     UTLT_Assert(session, return STATUS_ERROR,
                 "session not found");
 
-#if 0
-    UpfPDR upfPdr;
-    memset(&upfPdr, 0, sizeof(UpfPDR));
-
-    UTLT_Assert(!UpfPDRFindByID(pdrID, &upfPdr), return STATUS_ERROR, "PDR ID[%u] does NOT exist in UPF Context", pdrID);    
-
-    UTLT_Assert(_ConvertRemovePDRTlvToRule(&upfPdr, nPDRID) == STATUS_OK,
-            return STATUS_ERROR, "Convert PDR TLV To Rule is failed");
-
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelRemovePDR(&upfPdr) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelRemovePDR failed");
-    
-    // Remove Buffering packet
-    UpfBufPacket *packetStorage = UpfBufPacketFindByPdrId(pdrID);
-    if (packetStorage)
-        UpfBufPacketRemove(packetStorage);
+    //TODO(vivek): remove buffered packets
 
     // Deregister PDR to Session
-    UTLT_Assert(UpfPDRDeregisterToSessionByID(session, upfPdr.pdrId) == STATUS_OK,
-        return STATUS_ERROR, "UpfPDRDeregisterToSessionByID failed");
-
-    UTLT_Warning("PDR[%u] not in this session, PDR not removed", upfPdr.pdrId);
-#endif
-    return STATUS_ERROR;
-}
-
-#if 0
-Status _ConvertRemoveFARTlvToRule(UpfFAR *upfFar, uint32_t nFARID) {
-    // TODO: Need to Find the FAR stored in UPF
-    upfFar->flags.farId = 1;
-    upfFar->farId = ntohl(nFARID);
+    UTLT_Assert(UpfPDRDeregisterToSessionByID(session, pdrID) == STATUS_OK,
+                return STATUS_ERROR,
+                "UpfPDRDeregisterToSessionBy failed");
 
     return STATUS_OK;
 }
-#endif
 
 Status UpfN4HandleRemoveFar(UpfSession *session, uint32_t nFARID) {
     uint32_t farID = ntohl(nFARID);
@@ -823,24 +742,13 @@ Status UpfN4HandleRemoveFar(UpfSession *session, uint32_t nFARID) {
     UTLT_Debug("Handle Remove FAR[%u]", farID);
     UTLT_Assert(farID, return STATUS_ERROR,
                 "farId should not be 0");
-
-#if 0
-    UpfFAR upfFar;
-    memset(&upfFar, 0, sizeof(UpfFAR));
-
-    UTLT_Assert(!UpfFARFindByID(farID, &upfFar), return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", farID);
-
-    UTLT_Assert(_ConvertRemoveFARTlvToRule(&upfFar, nFARID) == STATUS_OK,
-        return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
-
-    // Using UPDK API
-    UTLT_Assert(Gtpv1TunnelRemoveFAR(&upfFar) == 0, return STATUS_ERROR,
-        "Gtpv1TunnelRemovefar failed");
+    UTLT_Assert(session, return STATUS_ERROR,
+                "session not found");
 
     // Deregister FAR to Session
-    UTLT_Assert(UpfFARDeregisterToSessionByID(session, upfFar.farId) == STATUS_OK,
-        return STATUS_ERROR, "UpfFARDeregisterToSessionByID failed");
-#endif
+    UTLT_Assert(UpfFARDeregisterToSessionByID(session, farID) == STATUS_OK,
+                return STATUS_ERROR, 
+                "UpfFARDeregisterToSession failed");
     return STATUS_OK;
 }
 
@@ -1147,6 +1055,8 @@ Status UpfN4HandleAssociationReleaseRequest(PfcpXact *xact,
     HashIndex *sessionHashIdx = NULL;
     UpfSession *session = NULL;
 
+#if 0
+    // TODO(vivek)
     for (sessionHashIdx = UpfSessionFirst(); sessionHashIdx;
          sessionHashIdx = UpfSessionNext(sessionHashIdx)) {
         session = UpfSessionThis(sessionHashIdx);
@@ -1155,6 +1065,7 @@ Status UpfN4HandleAssociationReleaseRequest(PfcpXact *xact,
             UpfSessionRemove(session);
         }
     }
+#endif
     // TODO: Check if I need to remove gnode in transaction
 
     // Build Response

@@ -38,16 +38,20 @@ ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
 endif
 
+ifeq ($(ONVM_HOME),)
+$(error "Please define ONVM_HOME environment variable")
+endif
+
 
 # Default target, can be overriden by command line or environment
 include $(RTE_SDK)/mk/rte.vars.mk
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
 # binary name
-APP = smf
+APP = upf_c_complete
 
 # all source are stored in SRCS-y
-SRCS-y := smf.c
+SRCS-y := upf.c upf_init.c n4_onvm_pfcp_path.c upf_config.c n4_onvm_pfcp_handler.c n4_onvm_pfcp_build.c n4_dispatcher.c
 
 ONVM= $(SRCDIR)/../../onvm
 
@@ -55,8 +59,20 @@ CFLAGS += -O3 $(USER_FLAGS)
 
 CFLAGS += -I$(ONVM)/onvm_nflib
 CFLAGS += -I$(ONVM)/lib
+CFLAGS += -I$(ONVM_HOME)/onvm/logger/
+CFLAGS += -I$(ONVM_HOME)/onvm/utlt/
+CFLAGS += -I$(ONVM_HOME)/onvm/pfcp/
+CFLAGS += -I$(ONVM_HOME)/onvm/updk/
+CFLAGS += -I$(ONVM_HOME)/onvm/upf/
+CFLAGS += -I$(ONVM_HOME)/onvm/list/
 LDFLAGS += $(ONVM)/onvm_nflib/$(RTE_TARGET)/libonvm.a
 LDFLAGS += $(ONVM)/lib/$(RTE_TARGET)/lib/libonvmhelper.a -lm
+LDFLAGS += $(ONVM_HOME)/onvm/upf/$(RTE_TARGET)/lib/libupf.a
+LDFLAGS += $(ONVM_HOME)/onvm/list/$(RTE_TARGET)/lib/liblist.a
+LDFLAGS += $(ONVM_HOME)/onvm/pfcp/$(RTE_TARGET)/lib/libpfcp.a
+LDFLAGS += $(ONVM_HOME)/onvm/utlt/$(RTE_TARGET)/lib/libutlt.a -lrt
+LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
+LDFLAGS += $(ONVM_HOME)/onvm/updk/$(RTE_TARGET)/lib/libupdk.a -lyaml
 
 # workaround for a gcc bug with noreturn attribute
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12603
