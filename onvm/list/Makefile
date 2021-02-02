@@ -7,6 +7,7 @@
 #          2015-2017 George Washington University
 #          2015-2017 University of California Riverside
 #          2010-2014 Intel Corporation.
+#          2016-2017 Hewlett Packard Enterprise Development LP
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,23 +36,25 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
 endif
 
-# Default target, can be overriden by command line or environment
-RTE_TARGET ?= x86_64-native-linuxapp-gcc
+ifeq ($(ONVM_HOME),)
+$(error "Please define ONVM_HOME environment variable")
+endif
 
+# Default target, can be overriden by command line or environment
 include $(RTE_SDK)/mk/rte.vars.mk
 
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += list
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += utlt
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += pfcp
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += updk
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += upf
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += lib
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += onvm_nflib
-DIRS-$(CONFIG_RTE_EXEC_ENV_LINUXAPP) += onvm_mgr
+RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
-include $(RTE_SDK)/mk/rte.extsubdir.mk
+# binary name
+LIB    = liblist.a
+
+# all source are stored in SRCS-y
+SRCS-y := list.c list_iterator.c list_node.c
+
+CFLAGS += -O3 $(USER_FLAGS) -DONVM_ENV
+
+include $(RTE_SDK)/mk/rte.extlib.mk
