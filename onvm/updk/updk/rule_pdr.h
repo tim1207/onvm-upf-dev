@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 
+#include "rule_far.h"
+
 /**
  * These IEs is save as TV type (Tag and Value). Tag is to defined if
  * this IE is existed and Value is to store this IE.
@@ -204,6 +206,16 @@ typedef struct {
     char framedIpv6Route[0x40];
 } UPDK_PDI;
 
+#define OUTER_HEADER_REMOVAL_GTP_IP4 0
+#define OUTER_HEADER_REMOVAL_GTP_IP6 1
+#define OUTER_HEADER_REMOVAL_UDP_IP4 2
+#define OUTER_HEADER_REMOVAL_UDP_IP6 3
+#define OUTER_HEADER_REMOVAL_IP4 4
+#define OUTER_HEADER_REMOVAL_IP6 5
+#define OUTER_HEADER_REMOVAL_GTP 6
+#define OUTER_HEADER_REMOVAL_S_TAG 7
+#define OUTER_HEADER_REMOVAL_S_C_TAG 8
+
 /**
  * UPDK_PDR - An IE from TS 29.244 and Table 7.5.2.2-1
  * 
@@ -244,6 +256,7 @@ typedef struct {
     UPDK_PDI      pdi;
     uint8_t  outerHeaderRemoval;
     uint32_t farId;
+    UPDK_FAR *far;
 
     // TODO: Need to handle multiple URR
     uint32_t urrId;

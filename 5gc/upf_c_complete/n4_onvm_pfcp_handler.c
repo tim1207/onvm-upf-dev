@@ -195,7 +195,7 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
         /*
         upfPdr->flags.urrId = 1;
         upfPdr->urrId = ntohl(*((uint32_t *)createPdr->uRRID.value));
-        UTLT_Debug("PDR URR ID: %u", upfPdr->farId);
+        UTLT_Debug("PDR URR ID: %u", upfPdr->urrId);
         */
         UTLT_Warning("UPF do NOT support URR yet");
     }
@@ -239,6 +239,11 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
 
     UTLT_Assert(_ConvertCreatePDRTlvToRule(upfPdr, createPdr) == STATUS_OK,
         return STATUS_ERROR, "Convert PDR TLV To Rule is failed");
+
+    if (upfPdr->flags.farId) {
+        upfPdr->far = UpfFARFindByID(session, upfPdr->farId);
+        UTLT_Assert(upfPdr->far, rte_free(upfPdr); return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", upfPdr->farId);
+    }
 
     // Register PDR to Session
     UTLT_Assert(UpfPDRRegisterToSession(session, upfPdr),
@@ -532,7 +537,7 @@ Status _ConvertUpdatePDRTlvToRule(UpfPDR *upfPdr, UpdatePDR *updatePDR) {
         /*
         upfPdr->flags.urrId = 1;
         upfPdr->urrId = ntohl(*((uint32_t *)updatePDR->uRRID.value));
-        UTLT_Debug("PDR URR ID: %u", upfPdr->farId);
+        UTLT_Debug("PDR URR ID: %u", upfPdr->urrId);
         */
         UTLT_Warning("UPF do NOT support URR yet");
     }
@@ -572,6 +577,11 @@ Status UpfN4HandleUpdatePdr(UpfSession *session, UpdatePDR *updatePdr) {
 
     UTLT_Assert(_ConvertUpdatePDRTlvToRule(upfPdr, updatePdr) == STATUS_OK,
         return STATUS_ERROR, "Convert PDR TLV To Rule is failed");
+
+    if (upfPdr->flags.farId) {
+        upfPdr->far = UpfFARFindByID(session, upfPdr->farId);
+        UTLT_Assert(upfPdr->far, return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", upfPdr->farId);
+    }
 
 #ifdef CHECK
     // Register PDR to Session
