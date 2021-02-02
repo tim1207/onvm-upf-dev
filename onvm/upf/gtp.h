@@ -52,11 +52,10 @@
 #include <unistd.h>
 
 #include <rte_common.h>
+#include <rte_ether.h>
 #include <rte_ip.h>
 #include <rte_mbuf.h>
-
-#include "../onvm_nflib.h"
-#include "../onvm_pkt_helper.h"
+#include <rte_udp.h>
 
 // #define DEBUG
 
@@ -154,9 +153,8 @@ static inline int get_gtp_version(uint8_t gtp_hdr_info) {
 static inline int parse_gtp_packet(struct rte_mbuf *pkt,
                                    struct rte_udp_hdr *udp_hdr, void **gtp_hdr);
 
-static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
-                                           struct rte_udp_hdr *udp_hdr,
-                                           struct onvm_pkt_meta *meta);
+// static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
+//                                            struct rte_udp_hdr *udp_hdr);
 
 static __rte_always_inline void gtpv1_set_header(gtpv1_t *gtp1_hdr,
                                                  uint16_t payload_len,
@@ -243,16 +241,14 @@ static inline int parse_gtp_packet(struct rte_mbuf *pkt,
   return ret;
 }
 
-static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
-                                           struct rte_udp_hdr *udp_hdr,
-                                           struct onvm_pkt_meta *meta) {
+static inline int32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
+                                          struct rte_udp_hdr *udp_hdr) {
   // extract TEID from struct rte_mbuf *pkt
   void *gtp_hdr;
   int ret = parse_gtp_packet(pkt, udp_hdr, &gtp_hdr);
   if (ret < 0) {
     printf("GTP packet parsing error... drop the packet\n");
-    meta->action = ONVM_NF_ACTION_DROP;
-    return 0;
+    return -1;
   }
 
   uint32_t teid;
@@ -282,8 +278,7 @@ static inline uint32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
     default:
       // TODO: Drop packet?
       // continue;
-      meta->action = ONVM_NF_ACTION_DROP;
-      return 0;
+      return -1;
   }
   // printf("%" PRIu32 "\n", teid);
   return teid;
