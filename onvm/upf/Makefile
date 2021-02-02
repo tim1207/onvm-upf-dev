@@ -53,16 +53,18 @@ RTE_TARGET ?= x86_64-native-linuxapp-gcc
 LIB    = libupf.a
 
 # all source are stored in SRCS-y
-SRCS-y := upf_context.c
+SRCS-y := upf_context.c upf.c
 
 CFLAGS += -O3 $(USER_FLAGS)
 CFLAGS += -I$(ONVM_HOME)/onvm/logger/
 CFLAGS += -I$(ONVM_HOME)/onvm/utlt/
 CFLAGS += -I$(ONVM_HOME)/onvm/pfcp/
 CFLAGS += -I$(ONVM_HOME)/onvm/updk/
+CFLAGS += -I$(ONVM_HOME)/onvm/list/
 LDFLAGS += $(ONVM_HOME)/onvm/pfcp/$(RTE_TARGET)/libpfcp.a
 LDFLAGS += $(ONVM_HOME)/onvm/utlt/$(RTE_TARGET)/libutlt.a
-LDFLAGS += $(ONVM_HOME)/onvm/updk/$(RTE_TARGET)/libutlt.a
+LDFLAGS += $(ONVM_HOME)/onvm/list/$(RTE_TARGET)/liblist.a
+LDFLAGS += $(ONVM_HOME)/onvm/updk/$(RTE_TARGET)/libupdk.a
 LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
 
 include $(RTE_SDK)/mk/rte.extlib.mk

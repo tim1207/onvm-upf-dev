@@ -23,15 +23,12 @@
 #include "updk/env.h"
 #include "updk/init.h"
 #include "updk/rule.h"
-#include "updk/rule_pdr.h"
-#include "updk/rule_far.h"
 
 #define MAX_NUM_OF_SUBNET       16
 
-IndexDeclare(upfSessionPool, UpfSession, MAX_POOL_OF_SESS);
-
 static UpfContext self;
 static _Bool upfContextInitialized = 0;
+static uint64_t g_sessionIdPool = 1;
 
 UpfContext *Self() {
     return &self;
@@ -68,13 +65,10 @@ Status UpfContextInit() {
     strcpy(self.envParams->virtualDevice->deviceID, self.gtpDevNamePrefix);
 
     // Init Resource
-    IndexInit(&upfSessionPool, MAX_POOL_OF_SESS);
+    UpfSessionPoolInit();
 
     PfcpNodeInit(); // init pfcp node for upfN4List (it will used pfcp node)
     TimerListInit(&self.timerServiceList);
-
-    self.sessionHash = HashMake();
-    self.bufPacketHash = HashMake();
 
     upfContextInitialized = 1;
 
@@ -88,24 +82,14 @@ Status UpfContextTerminate() {
 
     Status status = STATUS_OK;
 
-    int ret = pthread_spin_destroy(&self.buffLock);
-    UTLT_Assert(ret == 0, , "buffLock cannot destroy: %s", strerror(ret));
-    UTLT_Assert(self.bufPacketHash, , "Buffer Hash Table missing?!");
-    HashDestroy(self.bufPacketHash);
-
-    UTLT_Assert(self.sessionHash, , "Session Hash Table missing?!");
-    HashDestroy(self.sessionHash);
-
     // Terminate resource
-    IndexTerminate(&upfSessionPool);
+    // TODO(vivek)
+    // IndexTerminate(&upfSessionPool);
 
     PfcpRemoveAllNodes(&self.upfN4List);
     PfcpNodeTerminate();
 
-    // TODO: remove gtpv1TunnelList, ranS1uList, upfN4LIst, dnnList,
-    // pdrList, farList, qerList, urrLIist
     SockNodeListFree(&self.pfcpIPList);
-    // SockNodeListFree(&self.pfcpIPv6List);
     FreeVirtualDevice(self.envParams->virtualDevice);
 
     upfContextInitialized = 0;
@@ -113,173 +97,128 @@ Status UpfContextTerminate() {
     return status;
 }
 
-HashIndex *UpfSessionFirst() {
-    UTLT_Assert(self.sessionHash, return NULL, "");
-    return HashFirst(self.sessionHash);
+Status UpfPDRDeregisterToSessionByID(UpfSession *session, uint16_t id) {
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->pdr_list, return STATUS_ERROR, "PDR list not initialized");
+
+    list_node_t *node = NULL;
+    list_iterator_t *it;
+    it = list_iterator_new(session->pdr_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfPDR *pdr_i = (UpfPDR *) node->val;
+        if (pdr_i->pdrId == id) {
+            break;
+        }
+    }
+    list_iterator_destroy(it);
+    UTLT_Assert(node, return STATUS_ERROR, "PDR ID[%u] does NOT exist in UPF Context", id);
+    list_remove(session->pdr_list, node);
+    return STATUS_OK;
 }
 
-HashIndex *UpfSessionNext(HashIndex *hashIdx) {
-    UTLT_Assert(hashIdx, return NULL, "");
-    return HashNext(hashIdx);
+Status UpfFARDeregisterToSessionByID(UpfSession *session, uint16_t id) {
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->far_list, return STATUS_ERROR, "FAR list not initialized");
+
+    list_node_t *node = NULL;
+    list_iterator_t *it;
+    it = list_iterator_new(session->far_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfFAR *far = (UpfFAR *) node->val;
+        if (far->farId == id) {
+            break;
+        }
+    }
+    UTLT_Assert(node, return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", id);
+    list_remove(session->far_list, node);
+    return STATUS_OK;
 }
 
-UpfSession *UpfSessionThis(HashIndex *hashIdx) {
-    UTLT_Assert(hashIdx, return NULL, "");
-    return (UpfSession *)HashThisVal(hashIdx);
+Status UpfPDRRegisterToSession(UpfSession *session, UpfPDR *pdr) {
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->pdr_list, return STATUS_ERROR, "PDR list not initialized");
+
+    list_rpush(session->pdr_list, list_node_new(pdr));
 }
 
-void SessionHashKeygen(uint8_t *out, int *outLen, uint8_t *imsi,
-                       int imsiLen, uint8_t *dnn) {
-    memcpy(out, imsi, imsiLen);
-    strncpy((char *)(out + imsiLen), (char*)dnn, MAX_DNN_LEN + 1);
-    *outLen = imsiLen + strlen((char *)(out + imsiLen));
+Status UpfFARRegisterToSession(UpfSession *session, UpfFAR * far) {
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->far_list, return STATUS_ERROR, "FAR list not initialized");
 
-    return;
+    list_rpush(session->far_list, list_node_new(far));
+}
+
+UpfPDR *UpfPDRFindByID(UpfSession *session, uint16_t id) {
+    UTLT_Assert(session, return NULL, "session not found error");
+    UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
+
+    list_node_t *node;
+    list_iterator_t *it;
+    it = list_iterator_new(session->pdr_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfPDR *pdr = (UpfPDR *) node->val;
+        if (pdr->pdrId == id) {
+            list_iterator_destroy(it);
+            return pdr;
+        }
+    }
+    list_iterator_destroy(it);
+    return NULL;
+}
+
+UpfFAR *UpfFARFindByID(UpfSession *session, uint16_t id) {
+    UTLT_Assert(session, return NULL, "session not found error");
+    UTLT_Assert(session->far_list, return NULL, "FAR list not initialized");
+
+    list_node_t *node;
+    list_iterator_t *it;
+    it = list_iterator_new(session->far_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfFAR *far = (UpfFAR *) node->val;
+        if (far->farId == id) {
+            list_iterator_destroy(it);
+            return far;
+        }
+    }
+    list_iterator_destroy(it);
+    return NULL;
 }
 
 UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp, uint8_t *dnn,
                           uint8_t pdnType) {
     UpfSession *session = NULL;
 
-    IndexAlloc(&upfSessionPool, session);
+    session = UpfSessionAlloc(g_sessionIdPool);
     UTLT_Assert(session, return NULL, "session alloc error");
 
-    //session->gtpNode = NULL;
-
-    if (self.pfcpAddr) {
-        session->upfSeid =
-          ((uint64_t)self.pfcpAddr->s4.sin_addr.s_addr << 32)
-          | session->index;
-    } else if (self.pfcpAddr6) {
-        uint32_t *ptr =
-          (uint32_t *)self.pfcpAddr6->s6.sin6_addr.s6_addr;
-        session->upfSeid =
-          (((uint64_t)(*ptr)) << 32) | session->index;
-        // TODO: check if correct
-    }
-    session->upfSeid = htobe64(session->upfSeid);
-    //UTLT_Info()
-    session->upfSeid = 0; // TODO: check why
-
-    /* IMSI DNN Hash */
-    /* DNN */
     strncpy((char*)session->pdn.dnn, (char*)dnn, MAX_DNN_LEN + 1);
 
-    ListHeadInit(&session->pdrIdList);
-    ListHeadInit(&session->pdrList);
-    ListHeadInit(&session->farList);
-    ListHeadInit(&session->qerList);
-    ListHeadInit(&session->barList);
-    ListHeadInit(&session->urrList);
+    session->pdr_list = list_new();
+    session->far_list = list_new();
 
     session->pdn.paa.pdnType = pdnType;
     if (pdnType == PFCP_PDN_TYPE_IPV4) {
         session->ueIpv4.addr4 = ueIp->addr4;
-        //session->pdn.paa.addr4 = ueIp->addr4;
-    } else if (pdnType == PFCP_PDN_TYPE_IPV6) {
-        session->ueIpv6.addr6 = ueIp->addr6;
-        //session->pdn.paa.addr6 = ueIp->addr6;
-    } else if (pdnType == PFCP_PDN_TYPE_IPV4V6) {
-        // TODO
-        // session->ueIpv4 = UpfUeIPAlloc(AF_INET, dnn);
-        // UTLT_Assert(session->ueIpv4,
-        //   UpfSessionRemove(session); return NULL,
-        //   "Cannot allocate IPv4");
-
-        // session->ueIpv6 = UpfUeIPAlloc(AF_INET6, dnn);
-        // UTLT_Assert(session->ueIpv6,
-        //   UpfSessionRemove(session); return NULL,
-        //   "Cannot allocate IPv6");
-
-        // session->pdn.paa.dualStack.addr4 = session->ueIpv4->addr4;
-        // session->pdn.paa.dualStack.addr6 = session->ueIpv6->addr6;
     } else {
+        UpfSessionRemove(session);
         UTLT_Assert(0, return NULL, "UnSupported PDN Type(%d)", pdnType);
     }
-
-    /* Generate Hash Key: IP + DNN */
-    if (pdnType == PFCP_PDN_TYPE_IPV4) {
-        SessionHashKeygen(session->hashKey,
-                          &session->hashKeylen,
-                          (uint8_t *)&session->ueIpv4.addr4, 4, dnn);
-    } else {
-        SessionHashKeygen(session->hashKey,
-                          &session->hashKeylen,
-                          (uint8_t *)&session->ueIpv6.addr6,
-                          IPV6_LEN, dnn);
-    }
-
-    HashSet(self.sessionHash, session->hashKey,
-            session->hashKeylen, session);
-
+    g_sessionIdPool++;
     return session;
 }
 
 Status UpfSessionRemove(UpfSession *session) {
-    UTLT_Assert(self.sessionHash, return STATUS_ERROR,
-                "sessionHash error");
     UTLT_Assert(session, return STATUS_ERROR, "session error");
 
-    HashSet(self.sessionHash, session->hashKey,
-            session->hashKeylen, NULL);
-
-    // if (session->ueIpv4) {
-    //     UpfUeIPFree(session->ueIpv4);
-    // }
-    // if (session->ueIpv6) {
-    //     UpfUeIPFree(session->ueIpv6);
-    // }
-
-    // PDR_Thread_Safe(
-    //     RuleListDeletionAndFreeWithGTPv1Tunnel(PDR, pdr, session);
-    // );
-
-    // FAR_Thread_Safe(
-    //     RuleListDeletionAndFreeWithGTPv1Tunnel(FAR, far, session);
-    // );
-
-
-    // RuleListDeletionAndFreeWithGTPv1Tunnel(PDR, pdr, session);
-    // RuleListDeletionAndFreeWithGTPv1Tunnel(FAR, far, session);
-    /* TODO: Not support yet
-    QER_Thread_Safe(
-        RuleListDeletionAndFreeWithGTPv1Tunnel(QER, qer, session);
-    );
-
-    BAR_Thread_Safe(
-        RuleListDeletionAndFreeWithGTPv1Tunnel(BAR, bar, session);
-    );
-
-    URR_Thread_Safe(
-        RuleListDeletionAndFreeWithGTPv1Tunnel(URR, urr, session);
-    );
-    */
-
-    IndexFree(&upfSessionPool, session);
-
-    return STATUS_OK;
-}
-
-Status UpfSessionRemoveAll() {
-    HashIndex *hashIdx = NULL;
-    UpfSession *session = NULL;
-
-    for (hashIdx = UpfSessionFirst(); hashIdx;
-         hashIdx = UpfSessionNext(hashIdx)) {
-        session = UpfSessionThis(hashIdx);
-        UpfSessionRemove(session);
+    if (!session->far_list) {
+        list_destroy(session->far_list);
     }
 
+    if (!session->pdr_list) {
+        list_destroy(session->pdr_list);
+    }
+    UpfSessionFree(session);
     return STATUS_OK;
-}
-
-UpfSession *UpfSessionFind(uint32_t idx) {
-    //UTLT_Assert(idx, return NULL, "index error");
-    return IndexFind(&upfSessionPool, idx);
-}
-
-UpfSession *UpfSessionFindBySeid(uint64_t seid) {
-    return UpfSessionFind((seid-1) & 0xFFFFFFFF);
 }
 
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
@@ -328,9 +267,7 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
     UTLT_Assert(session, return NULL, "session add error");
 
     session->smfSeid = *(uint64_t*)request->cPFSEID.value;
-    session->upfSeid = session->index+1;
     UTLT_Trace("UPF Establishment UPF SEID: %lu", session->upfSeid);
 
     return session;
 }
-

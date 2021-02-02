@@ -42,6 +42,10 @@ ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
 endif
 
+ifeq ($(ONVM_HOME),)
+$(error "Please define ONVM_HOME environment variable")
+endif
+
 # Default target, can be overriden by command line or environment
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
@@ -60,8 +64,19 @@ SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_pkt.c onvm_nf.c
 
 INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h
 
-CFLAGS += $(WERROR_FLAGS) -O3 $(USER_FLAGS)
+CFLAGS += -O3 $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)/../ -I$(SRCDIR)/../onvm_nflib/ -I$(SRCDIR)/../lib/
+CFLAGS += -I$(ONVM_HOME)/onvm/logger/
+CFLAGS += -I$(ONVM_HOME)/onvm/utlt/
+CFLAGS += -I$(ONVM_HOME)/onvm/pfcp/
+CFLAGS += -I$(ONVM_HOME)/onvm/updk/
+CFLAGS += -I$(ONVM_HOME)/onvm/list/
+LDFLAGS += $(ONVM_HOME)/onvm/upf/$(RTE_TARGET)/libupf.a
+LDFLAGS += $(ONVM_HOME)/onvm/pfcp/$(RTE_TARGET)/libpfcp.a
+LDFLAGS += $(ONVM_HOME)/onvm/utlt/$(RTE_TARGET)/libutlt.a
+LDFLAGS += $(ONVM_HOME)/onvm/list/$(RTE_TARGET)/liblist.a
+LDFLAGS += $(ONVM_HOME)/onvm/updk/$(RTE_TARGET)/libupdk.a
+LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
 LDFLAGS += $(SRCDIR)/../lib/$(RTE_TARGET)/libonvmhelper.a
 LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/libonvm.a
 

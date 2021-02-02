@@ -49,6 +49,8 @@
 
 #include "onvm_mgr/onvm_init.h"
 
+#include "upf/upf_context.h"
+
 /********************************Global variables*****************************/
 
 struct onvm_nf *nfs = NULL;
@@ -263,6 +265,8 @@ init(int argc, char *argv[]) {
         onvm_sc_print(default_chain);
 
         onvm_flow_dir_init();
+
+        UpfSessionPoolInit();
         return 0;
 }
 

@@ -20,33 +20,21 @@
 
 #include "updk/env.h"
 #include "updk/init.h"
-#if 0
-#include "up/up_match.h"
-
 #include "updk/rule_pdr.h"
 #include "updk/rule_far.h"
-#endif
+
+#include "list.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
 typedef struct _UpfUeIp      UpfUeIp;
-typedef struct _UpfDev       UpfDev;
-#if 0
-typedef struct gtp5g_pdr     UpfPdr;
-typedef struct gtp5g_far     UpfFar;
-typedef struct _UpfBufPacket UpfBufPacket;
 
 // Rule structure dependent on UPDK
 typedef UPDK_PDR UpfPDR;
 typedef UPDK_FAR UpfFAR;
-/*
-typedef UPDK_QER UpfQER;
-typedef UPDK_BAR UpfBAR;
-typedef UPDK_URR UpfURR;
-*/
-#endif
+
 typedef enum _UpfEvent {
 
     UPF_EVENT_N4_MESSAGE,
@@ -109,17 +97,6 @@ typedef struct {
 
     // Session : hash(IMSI+DNN)
     Hash            *sessionHash;
-    // Save buffer packet here
-    Hash            *bufPacketHash;
-    // Use spin lock to protect data write
-    pthread_spinlock_t buffLock;
-    // TODO: read from config
-    // no reason, just want to bigger than /tmp/free5gc_unix_sock
-#define MAX_SOCK_PATH_LEN 64
-    char            buffSockPath[MAX_SOCK_PATH_LEN];
-    // Buffering socket for recv packet from kernel
-    Sock            *buffSock;
-
 
     // Config file
     const char      *configFilePath;
@@ -134,6 +111,7 @@ typedef struct _UpfUeIp {
 
 typedef struct _UpfSession {
     int             index;
+    uint32_t        hashKey;
 
     uint64_t        upfSeid;
     uint64_t        smfSeid;
@@ -145,150 +123,38 @@ typedef struct _UpfSession {
 
     /* User location */
     Tai             tai;
-    //ECgi          eCgi; // For LTE E-UTRA Cell ID
-    //NCgi          nCgi; // For 5GC NR Cell ID
-
-    /* Hashed key: hash(IMSI+DNN) */
-    uint8_t         hashKey[MAX_IMSI_LEN+MAX_DNN_LEN];
-    int             hashKeylen;
 
     /* GTP, PFCP context */
-    //SockNode        *gtpNode;
     PfcpNode        *pfcpNode;
-    ListHead        pdrIdList;
 
-    ListHead        pdrList;
-    ListHead        farList;
-    ListHead        qerList;
-    ListHead        barList;
-    ListHead        urrList;
-
+    list_t          *pdr_list;
+    list_t          *far_list;
 } UpfSession;
-
-// Used for buffering, Index type for each PDR
-typedef struct _UpfBufPacket {
-    //ListHead        node;
-    int             index;
-
-    // If sessionPtr == NULL, this PDR don't exist
-    // TS 29.244 5.2.1 shows that PDR won't cross session
-    const UpfSession *sessionPtr;
-    uint16_t        pdrId;
-    Bufblk          *packetBuffer;
-} UpfBufPakcet;
-
-#if 0
-typedef struct {
-    ListHead node;
-    int index;
-
-    UpfPDR pdr;
-    MatchRuleNode *matchRule;
-} UpfPDRNode;
-
-typedef struct {
-    ListHead node;
-    int index;
-
-    UpfFAR far;
-} UpfFARNode;
-
-typedef struct {
-    ListHead node;
-    int index;
-
-    // UpfQER qer;
-} UpfQERNode;
-
-typedef struct {
-    ListHead node;
-    int index;
-
-    // UpfBAR bar;
-} UpfBARNode;
-
-typedef struct {
-    ListHead node;
-    int index;
-
-    // UpfURR urr;
-} UpfURRNode;
-#endif
 
 UpfContext *Self();
 Status UpfContextInit();
 Status UpfContextTerminate();
 
-#if 0
-// Rules
-UpfPDRNode *UpfPDRNodeAlloc();
-UpfFARNode *UpfFARNodeAlloc();
-UpfQERNode *UpfQERNodeAlloc();
-UpfBARNode *UpfBARNodeAlloc();
-UpfURRNode *UpfURRNodeAlloc();
-
-void UpfPDRNodeFree(UpfPDRNode *node);
-void UpfFARNodeFree(UpfFARNode *node);
-void UpfQERNodeFree(UpfQERNode *node);
-void UpfBARNodeFree(UpfBARNode *node);
-void UpfURRNodeFree(UpfURRNode *node);
-
-int UpfPDRFindByID(uint16_t id, void *ruleBuf);
-int UpfFARFindByID(uint32_t id, void *ruleBuf);
-/*
-int UpfQERFindByID(uint32_t id, void *ruleBuf);
-int UpfBARFindByID(uint32_t id, void *ruleBuf);
-int UpfURRFindByID(uint32_t id, void *ruleBuf);
-*/
-
-Status HowToHandleThisPacket(uint32_t farID, uint8_t *action);
-
-void UpfPDRDump();
-void UpfFARDump();
-/*
-void UpfQERDump();
-void UpfBARDump();
-void UpfURRDump();
-*/
-
-UpfPDRNode *UpfPDRRegisterToSession(UpfSession *sess, UpfPDR *rule);
-UpfFARNode *UpfFARRegisterToSession(UpfSession *sess, UpfFAR *rule);
-/*
-UpfQERNode *UpfQERRegisterToSession(UpfSession *sess, UpfQER *rule);
-UpfBARNode *UpfBARRegisterToSession(UpfSession *sess, UpfBAR *rule);
-UpfURRNode *UpfURRRegisterToSession(UpfSession *sess, UpfURR *rule);
-*/
-
-Status UpfPDRDeregisterToSessionByID(UpfSession *sess, uint16_t id);
-Status UpfFARDeregisterToSessionByID(UpfSession *sess, uint32_t id);
-/*
-Status UpfQERDeregisterToSessionByID(UpfSession *sess, uint32_t id);
-Status UpfBARDeregisterToSessionByID(UpfSession *sess, uint32_t id);
-Status UpfURRDeregisterToSessionByID(UpfSession *sess, uint32_t id);
-*/
-// BufPacket
-HashIndex *UpfBufPacketFirst();
-HashIndex *UpfBufPacketNext(HashIndex *hashIdx);
-UpfBufPacket *UpfBufPacketThis(HashIndex *hashIdx);
-UpfBufPacket *UpfBufPacketFindByPdrId(uint16_t pdrId);
-UpfBufPacket *UpfBufPacketAdd(const UpfSession * const session,
-                              const uint16_t pdrId);
-Status UpfBufPacketRemove(UpfBufPacket *bufPacket);
-Status UpfBufPacketRemoveAll();
-#endif
-
 // Session
-HashIndex *UpfSessionFirst();
-HashIndex *UpfSessionNext(HashIndex *hashIdx);
-UpfSession *UpfSessionThis(HashIndex *hashIdx);
-void SessionHashKeygen(uint8_t *out, int *outLen, uint8_t *imsi, int imsiLen, uint8_t *dnn);
-UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp, uint8_t *dnn, uint8_t pdnType);
-Status UpfSessionRemove(UpfSession *session);
-Status UpfSessionRemoveAll();
-UpfSession *UpfSessionFind(uint32_t idx);
-UpfSession *UpfSessionFindBySeid(uint64_t seid);
+int UpfSessionPoolInit(void);
+
+// Create Session APIs
+UpfSession *UpfSessionAlloc(uint64_t seid);
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message);
-UpfSession *UpfSessionFindByPdrTeid(uint32_t teid);
+
+// Delete Session APIs
+void UpfSessionFree(UpfSession *);
+Status UpfSessionRemove(UpfSession *session);
+
+// Find Session APIs
+UpfSession *UpfSessionFindBySeid(uint64_t seid);
+
+Status UpfPDRRegisterToSession(UpfSession *session, UpfPDR *pdr);
+Status UpfFARRegisterToSession(UpfSession *session, UpfFAR *far);
+UpfPDR *UpfPDRFindByID(UpfSession *session, uint16_t id);
+UpfFAR *UpfFARFindByID(UpfSession *session, uint16_t id);
+Status UpfPDRDeregisterToSessionByID(UpfSession *session, uint16_t id);
+Status UpfFARDeregisterToSessionByID(UpfSession *session, uint16_t id);
 
 #ifdef __cplusplus
 }
