@@ -150,6 +150,8 @@ Status InsertTEIDtoSessionMap(const uint32_t teid, UpfSession *session);
 // Delete Session APIs
 void UpfSessionFree(UpfSession *);
 Status UpfSessionRemove(UpfSession *session);
+void TeidToUpfSessionMapFree(uint32_t teid);
+void UeIpToUpfSessionMapFree(uint32_t ueip);
 
 // Find Session APIs
 UpfSession *UpfSessionFindBySeid(uint64_t seid);
