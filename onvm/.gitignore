@@ -3,3 +3,4 @@
 /onvm_nf/onvm_nf
 *.cmd
 build/
+/onvm_mgr/log
