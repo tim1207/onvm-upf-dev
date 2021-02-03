@@ -66,6 +66,26 @@
 #define SELF_IP 63464458 
 #endif
 
+#define SRC_INTF_ACCESS     0
+#define SRC_INTF_CORE       1
+#define SRC_INTF_SGI_LAN    2
+#define SRC_INTF_CP         3
+#define SRC_INTF_NUM        (SRC_INTF_CP + 1)
+
+static inline uint8_t SourceInterfaceToPort (uint8_t interface) {
+    switch (interface) {
+        case SRC_INTF_ACCESS:
+            return 0;
+        case SRC_INTF_CORE:
+        case SRC_INTF_SGI_LAN:
+            return 1;
+        case SRC_INTF_CP:
+            return -1;
+        default:
+            return -1;
+    }
+}
+
 UPDK_PDR *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
     UpfSession *session = UpfSessionFindByUeIP(ue_ip);
     UTLT_Assert(session, return NULL, "session not found error");
@@ -77,6 +97,14 @@ UPDK_PDR *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
     while (node->next) {
         pdr = (UpfPDR *) node->val;
         node = node->next;
+        if (pdr->flags.pdi) {
+            if (pdr->pdi.flags.sourceInterface) {
+                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
+                    continue;
+                }
+            }
+            break;
+        }
     }
     return pdr;
 }
@@ -92,6 +120,14 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     while (node->next) {
         pdr = (UpfPDR *) node->val;
         node = node->next;
+        if (pdr->flags.pdi) {
+            if (pdr->pdi.flags.sourceInterface) {
+                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
+                    continue;
+                }
+            }
+            break;
+        }
     }
     return pdr;
 }
@@ -184,9 +220,8 @@ static int packet_handler(struct rte_mbuf *pkt,
                           struct onvm_nf_local_ctx *nf_local_ctx) {
     meta->action = ONVM_NF_ACTION_DROP;
     struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
-    struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
 
-    if (iph == NULL || udp_header == NULL) {
+    if (iph == NULL) {
         return 0;
     }
 
@@ -194,15 +229,18 @@ static int packet_handler(struct rte_mbuf *pkt,
 
     // Step 1: Identify if it is a uplink packet or downlink packet
     if (iph->dst_addr == SELF_IP) {  //
+        struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
+        if (udp_header == NULL) {
+            return 0;
+        }
         // invariant(dst_port == GTPV1_PORT);
         // extract TEID from
         // Step 2: Get PDR rule
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
-        pdr = GetPdrByTeid(pkt, 1);
+        pdr = GetPdrByTeid(pkt, teid);
     } else {
         // Step 2: Get PDR rule
-        pdr = GetPdrByUeIpAddress(pkt, iph->dst_addr);
-        return 0;
+        pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
     }
 
     if (!pdr) {
