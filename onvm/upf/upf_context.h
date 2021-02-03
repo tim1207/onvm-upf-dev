@@ -120,6 +120,7 @@ typedef struct _UpfSession {
     Pdn             pdn;
     UpfUeIp         ueIpv4;
     UpfUeIp         ueIpv6;
+    uint32_t        teid;
 
     /* User location */
     Tai             tai;
@@ -137,10 +138,14 @@ Status UpfContextTerminate();
 
 // Session
 int UpfSessionPoolInit(void);
+int UeIpToUpfSessionMapInit(void);
+int TeidToUpfSessionMapInit(void);
 
 // Create Session APIs
 UpfSession *UpfSessionAlloc(uint64_t seid);
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message);
+Status InsertUEIPtoSessionMap(const uint32_t ue_ip, UpfSession *session);
+Status InsertTEIDtoSessionMap(const uint32_t teid, UpfSession *session);
 
 // Delete Session APIs
 void UpfSessionFree(UpfSession *);
@@ -148,6 +153,8 @@ Status UpfSessionRemove(UpfSession *session);
 
 // Find Session APIs
 UpfSession *UpfSessionFindBySeid(uint64_t seid);
+UpfSession *UpfSessionFindByTeid(uint32_t teid);
+UpfSession *UpfSessionFindByUeIP(uint32_t ueip);
 
 Status UpfPDRRegisterToSession(UpfSession *session, UpfPDR *pdr);
 Status UpfFARRegisterToSession(UpfSession *session, UpfFAR *far);

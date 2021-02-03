@@ -267,6 +267,8 @@ init(int argc, char *argv[]) {
         onvm_flow_dir_init();
 
         UpfSessionPoolInit();
+        UeIpToUpfSessionMapInit();
+        TeidToUpfSessionMapInit();
         return 0;
 }
 

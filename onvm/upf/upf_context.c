@@ -9,6 +9,8 @@
 #include <netinet/in.h>
 #include <net/if.h>
 
+#include <rte_byteorder.h>
+
 #include "utlt_debug.h"
 #include "utlt_pool.h"
 #include "utlt_index.h"
@@ -66,6 +68,8 @@ Status UpfContextInit() {
 
     // Init Resource
     UpfSessionPoolInit();
+    UeIpToUpfSessionMapInit();
+    TeidToUpfSessionMapInit();
 
     PfcpNodeInit(); // init pfcp node for upfN4List (it will used pfcp node)
     TimerListInit(&self.timerServiceList);
@@ -184,8 +188,12 @@ UpfFAR *UpfFARFindByID(UpfSession *session, uint16_t id) {
     return NULL;
 }
 
-UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp, uint8_t *dnn,
+UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
+                          PfcpFTeid *teid,
+                          uint8_t *dnn,
                           uint8_t pdnType) {
+    UTLT_Assert(teid, return NULL, "teid is null");
+    UTLT_Assert(ueIp, return NULL, "ueIp");
     UpfSession *session = NULL;
 
     session = UpfSessionAlloc(g_sessionIdPool);
@@ -196,13 +204,20 @@ UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp, uint8_t *dnn,
     session->pdr_list = list_new();
     session->far_list = list_new();
 
+    session->teid = rte_cpu_to_be_32(teid->teid);
     session->pdn.paa.pdnType = pdnType;
     if (pdnType == PFCP_PDN_TYPE_IPV4) {
-        session->ueIpv4.addr4 = ueIp->addr4;
+        session->ueIpv4.addr4.s_addr = rte_cpu_to_be_32(ueIp->addr4.s_addr);
     } else {
         UpfSessionRemove(session);
         UTLT_Assert(0, return NULL, "UnSupported PDN Type(%d)", pdnType);
     }
+
+    UTLT_Assert(InsertTEIDtoSessionMap(session->teid, session) == STATUS_OK,
+                UpfSessionRemove(session); return NULL, "Unable to create Uplink data for TEID (%u)", session->teid);
+    UTLT_Assert(InsertUEIPtoSessionMap(session->ueIpv4.addr4.s_addr, session) == STATUS_OK,
+                UpfSessionRemove(session); return NULL, "Unable to create Downlink data for UE IP (%u)", ueIp->addr4.s_addr);
+
     g_sessionIdPool++;
     return session;
 }
@@ -217,6 +232,8 @@ Status UpfSessionRemove(UpfSession *session) {
     if (!session->pdr_list) {
         list_destroy(session->pdr_list);
     }
+    UeIpToUpfSessionMapFree(session->ueIpv4.addr4.s_addr);
+    TeidToUpfSessionMapFree(session->teid);
     UpfSessionFree(session);
     return STATUS_OK;
 }
@@ -260,10 +277,16 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
         return NULL;
     }
 
+    if (!request->createPDR[0].pDI.localFTEID.presence) {
+        UTLT_Error("TEID error");
+        return NULL;
+    }
+
     session = UpfSessionAdd((PfcpUeIpAddr *)
-                &request->createPDR[0].pDI.uEIPAddress.value,
-                request->createPDR[0].pDI.networkInstance.value,
-                ((int8_t *)request->pDNType.value)[0]);
+                            request->createPDR[0].pDI.uEIPAddress.value,
+                            (PfcpFTeid *) request->createPDR[0].pDI.localFTEID.value,
+                            request->createPDR[0].pDI.networkInstance.value,
+                            ((int8_t *)request->pDNType.value)[0]);
     UTLT_Assert(session, return NULL, "session add error");
 
     session->smfSeid = *(uint64_t*)request->cPFSEID.value;
