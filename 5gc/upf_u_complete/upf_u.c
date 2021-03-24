@@ -94,7 +94,7 @@ UPDK_PDR *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
 
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL;
-    while (node->next) {
+    while (node) {
         pdr = (UpfPDR *) node->val;
         node = node->next;
         if (pdr->flags.pdi) {
@@ -117,7 +117,7 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
 
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL;
-    while (node->next) {
+    while (node) {
         pdr = (UpfPDR *) node->val;
         node = node->next;
         if (pdr->flags.pdi) {
