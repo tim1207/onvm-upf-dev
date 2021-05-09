@@ -63,7 +63,7 @@
 #if 0
 #define SELF_IP RTE_IPV4(10, 100, 200, 3)
 #else
-#define SELF_IP 63464458 
+#define SELF_IP 63464458
 #endif
 
 #define SRC_INTF_ACCESS     0
@@ -86,6 +86,9 @@ static inline uint8_t SourceInterfaceToPort (uint8_t interface) {
     }
 }
 
+uint64_t seid = 0;
+uint16_t pdrId = 0;
+
 UPDK_PDR *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
     UpfSession *session = UpfSessionFindByUeIP(ue_ip);
     UTLT_Assert(session, return NULL, "session not found error");
@@ -105,6 +108,10 @@ UPDK_PDR *GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
             }
             break;
         }
+    }
+    if (pdr) {
+        seid = session->upfSeid;
+        pdrId = pdr->pdrId;
     }
     return pdr;
 }
@@ -128,6 +135,10 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
             }
             break;
         }
+    }
+    if (pdr) {
+        seid = session->upfSeid;
+        pdrId = pdr->pdrId;
     }
     return pdr;
 }
@@ -164,7 +175,7 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                                 struct rte_ipv4_hdr *ipv4_hdr =
                                     (struct rte_ipv4_hdr *)rte_pktmbuf_prepend(
                                             pkt, (uint16_t) sizeof(struct rte_ipv4_hdr));
-                                
+
                                 ipv4_hdr->version_ihl = IPVERSION << 4 | sizeof(struct rte_ipv4_hdr) / RTE_IPV4_IHL_MULTIPLIER;
                                 ipv4_hdr->time_to_live = IPDEFTTL;
                                 ipv4_hdr->next_proto_id = IPPROTO_UDP;
@@ -177,7 +188,7 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                             default:
                                 UTLT_Error("Unknown outer header creation info");
                         }
-                    } 
+                    }
                 }
                 meta->destination = pkt->port ^ 1;
                 meta->action = ONVM_NF_ACTION_OUT;
@@ -190,15 +201,17 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                            far->applyAction,
                            far->farId);
         }
-#if 0
         //TODO(vivek): Complete these actions:
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_NOCP) {
-            UTLT_Error("Notify Apply action: %u not supported, dropping the packet", far->applyAction);
+            // Send message to UPF-C
+            struct ReportMsg *msg= (struct ReportMsg *) rte_calloc(NULL, 1, sizeof(struct ReportMsg), 0);
+            msg->seid = seid;
+            msg->pdrId = pdrId;
+            onvm_nflib_send_msg_to_nf(2, &msg);
         }
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_DUPL) {
-            UTLT_Error("Notify Apply action: %u not supported, dropping the packet", far->applyAction);
+            UTLT_Error("Duplicate Apply action: %u not supported, dropping the packet", far->applyAction);
         }
-#endif
     }
 }
 

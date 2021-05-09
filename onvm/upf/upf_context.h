@@ -46,6 +46,11 @@ typedef enum _UpfEvent {
 
 } UpfEvent;
 
+struct ReportMsg {
+    uint64_t seid;
+    uint16_t pdrId;
+};
+
 typedef struct {
     uint8_t         role;                // UpfRole
     const char      *gtpDevNamePrefix;   // Default : "upfgtp"

@@ -18,6 +18,21 @@
   (RTE_ETHER_HDR_LEN + 20 + sizeof(struct rte_udp_hdr))
 
 
+void
+msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
+    struct ReportMsg *msg = (struct ReportMsg *) msg_data;
+    if (!msg) {
+        UTLT_Error("received msg is NULL");
+        return;
+    }
+
+    Event event;
+    event.type = UPF_EVENT_N4_MESSAGE;
+    event.arg0 = msg->seid;
+    event.arg1 = msg->pdrId;
+    UpfDispatcher(&event);
+}
+
 int packet_handler(
     struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {

@@ -8,6 +8,7 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+void msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx);
 int packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_local_ctx *nf_local_ctx);
 
 Status PfcpServerInit();
