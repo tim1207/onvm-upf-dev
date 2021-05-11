@@ -194,7 +194,6 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                 meta->action = ONVM_NF_ACTION_OUT;
                 break;
             case UPDK_FAR_APPLY_ACTION_BUFF:
-                UTLT_Error("Buffering Apply action: %u not supported, dropping the packet", far->applyAction);
                 break;
             default:
                 UTLT_Error("Unspec apply action[%u] in FAR[%u]",
@@ -207,7 +206,7 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
             struct ReportMsg *msg= (struct ReportMsg *) rte_calloc(NULL, 1, sizeof(struct ReportMsg), 0);
             msg->seid = seid;
             msg->pdrId = pdrId;
-            onvm_nflib_send_msg_to_nf(2, &msg);
+            onvm_nflib_send_msg_to_nf(2, msg);
         }
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_DUPL) {
             UTLT_Error("Duplicate Apply action: %u not supported, dropping the packet", far->applyAction);

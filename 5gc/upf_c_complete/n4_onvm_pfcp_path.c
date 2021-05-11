@@ -27,7 +27,7 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     }
 
     Event event;
-    event.type = UPF_EVENT_N4_MESSAGE;
+    event.type = UPF_EVENT_SESSION_REPORT;
     event.arg0 = msg->seid;
     event.arg1 = msg->pdrId;
     UpfDispatcher(&event);
