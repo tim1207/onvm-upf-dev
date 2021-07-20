@@ -688,14 +688,18 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
                 return STATUS_ERROR, "Far ID not presence");
 
     uint32_t farID = ntohl(*((uint32_t *)updateFar->fARID.value));
-
+    //to check the last action
+    uint8_t oldAction;
 
     UpfFAR *upfFar = UpfFARFindByID(session, farID);
     UTLT_Assert(upfFar != NULL, return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", farID);
 
+    //to check the last action
+    oldAction = upfFar->applyAction;
     UTLT_Assert(_ConvertUpdateFARTlvToRule(upfFar, updateFar) == STATUS_OK,
         return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
 
+ //   printf("old action is %d, and new action is %d\n",oldAction,upfFar->applyAction);
 #if HANDLE_BUFFER
     // Buffered packet handle
     if ((oldAction & PFCP_FAR_APPLY_ACTION_BUFF)) {
@@ -725,6 +729,10 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
         }
     }
 #endif
+    //if the action of srr has been done, then need to set the srr_flag to false
+    if((oldAction & PFCP_FAR_APPLY_ACTION_NOCP) && !(upfFar->applyAction & PFCP_FAR_APPLY_ACTION_NOCP)){
+        session->srr_flag = false;
+    }
     return STATUS_OK;
 }
 
@@ -976,7 +984,6 @@ Status UpfN4HandleSessionDeletionRequest(UpfSession *session, PfcpXact *xact,
 Status UpfN4HandleSessionReportResponse(UpfSession *session, PfcpXact *xact,
                                         PFCPSessionReportResponse *response) {
     Status status;
-
     UTLT_Assert(session, return STATUS_ERROR, "Session error");
     UTLT_Assert(xact, return STATUS_ERROR, "xact error");
     UTLT_Assert(response->cause.presence, return STATUS_ERROR,

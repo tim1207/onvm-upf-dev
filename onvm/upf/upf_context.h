@@ -135,6 +135,7 @@ typedef struct _UpfSession {
 
     list_t          *pdr_list;
     list_t          *far_list;
+    bool srr_flag;
 } UpfSession;
 
 UpfContext *Self();

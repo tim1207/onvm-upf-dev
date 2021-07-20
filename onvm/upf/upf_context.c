@@ -203,6 +203,8 @@ UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
 
     session->pdr_list = list_new();
     session->far_list = list_new();
+    //use to check srr flag
+    session->srr_flag = false;
 
     session->teid = rte_cpu_to_be_32(teid->teid);
     session->pdn.paa.pdnType = pdnType;

@@ -22,6 +22,14 @@ void UpfDispatcher(const Event *event) {
             UTLT_Assert(session != NULL, return,
                         "Session not find by seid: %d", seid);
 
+            //to check if srr has been sent
+            if(session->srr_flag == true){
+                UTLT_Info("PFCP SRR outstanding\n");
+                return;
+            }
+
+            session->srr_flag = true;
+
             memset(&header, 0, sizeof(PfcpHeader));
             header.type = PFCP_SESSION_REPORT_REQUEST;
             header.seid = seid;
@@ -32,7 +40,8 @@ void UpfDispatcher(const Event *event) {
                                                                       pdrId);
             UTLT_Assert(status == STATUS_OK, return,
                         "Build Session Report Request error");
-
+            
+            UTLT_Warning("[NCTU] Send SRR");
             xact = PfcpXactLocalCreate(session->pfcpNode, &header, bufBlk);
             UTLT_Assert(xact, return, "pfcpXactLocalCreate error");
 
@@ -91,7 +100,7 @@ void UpfDispatcher(const Event *event) {
                 status = PfcpXactReceive(upf, &pfcpMessage->header, &xact);
                 UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
             }
-
+//            printf("pfcp header type = %d\n",pfcpMessage->header.type);
             switch (pfcpMessage->header.type) {
             case PFCP_HEARTBEAT_REQUEST:
                 UTLT_Info("[PFCP] Handle PFCP heartbeat request");
