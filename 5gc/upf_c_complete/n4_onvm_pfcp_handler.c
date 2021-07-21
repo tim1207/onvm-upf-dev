@@ -699,7 +699,7 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     UTLT_Assert(_ConvertUpdateFARTlvToRule(upfFar, updateFar) == STATUS_OK,
         return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
 
- //   printf("old action is %d, and new action is %d\n",oldAction,upfFar->applyAction);
+
 #if HANDLE_BUFFER
     // Buffered packet handle
     if ((oldAction & PFCP_FAR_APPLY_ACTION_BUFF)) {

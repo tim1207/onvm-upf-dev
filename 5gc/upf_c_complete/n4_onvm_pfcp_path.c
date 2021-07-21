@@ -17,7 +17,6 @@
 #define ETHER_IP_UDP_HDR_LEN \
   (RTE_ETHER_HDR_LEN + 20 + sizeof(struct rte_udp_hdr))
 
-bool test_flag = false;
 
 void
 msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {

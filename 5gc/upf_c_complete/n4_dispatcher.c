@@ -100,7 +100,7 @@ void UpfDispatcher(const Event *event) {
                 status = PfcpXactReceive(upf, &pfcpMessage->header, &xact);
                 UTLT_Assert(status == STATUS_OK, goto freeBuf, "");
             }
-//            printf("pfcp header type = %d\n",pfcpMessage->header.type);
+
             switch (pfcpMessage->header.type) {
             case PFCP_HEARTBEAT_REQUEST:
                 UTLT_Info("[PFCP] Handle PFCP heartbeat request");
