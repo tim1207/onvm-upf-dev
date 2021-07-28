@@ -203,9 +203,15 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
         //TODO(vivek): Complete these actions:
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_NOCP) {
             // Send message to UPF-C
+            Event *msg= (Event *) rte_calloc(NULL, 1, sizeof(Event), 0);
+            msg->type = UPF_EVENT_SESSION_REPORT;
+            msg->arg0 = seid;
+            msg->arg1 = pdrId;
+            /*
             struct ReportMsg *msg= (struct ReportMsg *) rte_calloc(NULL, 1, sizeof(struct ReportMsg), 0);
             msg->seid = seid;
             msg->pdrId = pdrId;
+            */
             onvm_nflib_send_msg_to_nf(2, msg);
         }
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_DUPL) {

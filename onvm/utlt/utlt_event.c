@@ -67,19 +67,36 @@ Status EventRecv(EvtQId eqId, Event *event) {
 
 void EventTimerExpire(uintptr_t data, uintptr_t param[]) {
     EvtQId queue = data;
-    Event event;
+    //Event event;
     Status status;
+    int onvm_ret;
 
-    UTLT_Assert(queue, return, "queue error");
-
+    //UTLT_Assert(queue, return, "queue error");
+    
+    /*
     event.type = param[0];
     event.arg0 = param[1];
     event.arg1 = param[2];
     event.arg2 = param[3];
     event.arg3 = param[4];
     event.arg4 = param[5];
+    */
 
-    status = EventSend(queue, event.type, 5, event.arg0, event.arg1, event.arg2, event.arg3, event.arg4);
+    Event *msg= (Event *) rte_calloc(NULL, 1, sizeof(Event), 0);
+
+    msg->type = param[0];
+    msg->arg0 = param[1];
+    msg->arg1 = param[2];
+    msg->arg2 = param[3];
+    msg->arg3 = param[4];
+    msg->arg4 = param[5];
+    
+
+    onvm_ret = onvm_nflib_send_msg_to_nf(2, msg);
+    status = (onvm_ret == 0) ? STATUS_OK : STATUS_ERROR;
+
+    //status = EventSend(queue, event.type, 5, event.arg0, event.arg1, event.arg2, event.arg3, event.arg4);
+
 
     if (status != STATUS_OK) {
         UTLT_Error("event send error: %d", status);

@@ -27,6 +27,11 @@ static Status ConfigHandle(void *data);
 static Status PfcpInit(void *data);
 static Status PfcpTerm(void *data);
 
+static Status PacketRecvThreadInit(void *data);
+static Status PacketRecvThreadTerm(void *data);
+
+void PacketReceiverThread(ThreadID id, void *data);
+
 static char configFilePath[MAX_FILE_PATH_STRLEN] = "./config/upfcfg.yaml";
 
 UpfOps UpfOpsList[] = {
@@ -70,6 +75,20 @@ UpfOps UpfOpsList[] = {
         .init = PfcpInit,
         .initData = NULL,
         .term = PfcpTerm,
+        .termData = NULL,
+    },
+    {
+        .name = "Library - Thread",
+        .init = ThreadInit,
+        .initData = NULL,
+        .term = ThreadFinal,
+        .termData = NULL,
+    },
+    {
+        .name = "UPF - Thread",
+        .init = PacketRecvThreadInit,
+        .initData = PacketReceiverThread,
+        .term = PacketRecvThreadTerm,
         .termData = NULL,
     },
 };
@@ -132,7 +151,8 @@ static Status PfcpInit(void *data) {
 
     // init pfcp xact context
     UTLT_Assert(PfcpXactInit(&Self()->timerServiceList,
-                    0, 0) == STATUS_OK,
+                    UPF_EVENT_N4_T3_RESPONSE, UPF_EVENT_N4_T3_HOLDING) == STATUS_OK,
+//                    0, 0) == STATUS_OK,
         status |= STATUS_ERROR, "");
 
     return status;
@@ -147,4 +167,60 @@ static Status PfcpTerm(void *data) {
         status |= STATUS_ERROR, "");
 
     return status;
+}
+
+static Status PacketRecvThreadInit(void *data) {
+    ThreadFuncType threadFuncPtr = data;
+    
+    UTLT_Assert(ThreadCreate(&Self()->pktRecvThread, threadFuncPtr, NULL) == STATUS_OK,
+        return STATUS_ERROR, "");
+    
+    return STATUS_OK;
+}
+
+static Status PacketRecvThreadTerm(void *data) {
+    UTLT_Assert(ThreadDelete(Self()->pktRecvThread) == STATUS_OK,
+        return STATUS_ERROR, "");
+
+    return STATUS_OK;
+}
+
+void PacketReceiverThread(ThreadID id, void *data) {
+    Status status;
+    /*
+    int nfds;
+    Sock *sockPtr;
+    struct epoll_event events[MAX_NUM_OF_EVENT];
+    */    
+    utime_t prev, now; // For timer checking purpose
+
+    prev = TimeNow();
+
+    while (!ThreadStop()) {
+        /*
+        nfds = EpollWait(Self()->epfd, events, 300);
+        UTLT_Assert(nfds >= 0, , "Epoll Wait error : %s", strerror(errno));
+
+        for (int i = 0; i < nfds; i++) {
+            sockPtr = events[i].data.ptr;
+            status = sockPtr->handler(sockPtr, sockPtr->data);
+            // TODO : Log may show which socket
+            UTLT_Assert(status == STATUS_OK, , "Error handling UP socket");
+        }
+        */
+        // Check if timer expired
+        now = TimeNow();
+        if (now - prev > 10) {
+            TimerExpireCheck(
+                    &Self()->timerServiceList, Self()->eventQ);
+
+            prev = now;
+        }
+
+    }
+
+    sem_post(((Thread *)id)->semaphore);
+    UTLT_Trace("Packet receiver thread terminated");
+
+    return;
 }

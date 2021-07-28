@@ -20,16 +20,26 @@
 
 void
 msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
-    struct ReportMsg *msg = (struct ReportMsg *) msg_data;
+    //struct ReportMsg *msg = (struct ReportMsg *) msg_data;
+    Event *msg = (Event *)msg_data;
     if (!msg) {
         UTLT_Error("received msg is NULL");
         return;
     }
 
     Event event;
-    event.type = UPF_EVENT_SESSION_REPORT;
-    event.arg0 = msg->seid;
-    event.arg1 = msg->pdrId;
+
+    event.type = msg->type;
+    event.arg0 = msg->arg0;
+    event.arg1 = msg->arg1;
+    event.arg2 = msg->arg2;
+    event.arg3 = msg->arg3;
+    event.arg4 = msg->arg4;
+
+    //event.type = UPF_EVENT_SESSION_REPORT;
+    //event.arg0 = msg->seid;
+    //event.arg1 = msg->pdrId;
+
     UpfDispatcher(&event);
 
 }

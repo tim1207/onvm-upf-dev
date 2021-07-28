@@ -8,6 +8,7 @@
 #include "utlt_debug.h"
 #include "utlt_mq.h"
 #include "utlt_timer.h"
+#include "rte_malloc.h"
 
 #ifdef __cplusplus
 extern "C" {

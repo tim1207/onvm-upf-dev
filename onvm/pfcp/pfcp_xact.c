@@ -624,7 +624,7 @@ Status PfcpXactCommit(PfcpXact *xact) {
     status = PfcpSend(xact->gnode, bufBlk);
     UTLT_Assert(status == STATUS_OK, return STATUS_ERROR, "PfcpSend error");
 
-    PfcpXactDelete(xact);
+    //PfcpXactDelete(xact);
 
     return STATUS_OK;
 }
