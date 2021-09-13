@@ -58,6 +58,31 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
+#include "interface.h"
+
+#include <time.h>
+
+void get_monotonic_time(struct timespec* ts) {
+    clock_gettime(CLOCK_MONOTONIC, ts);
+}
+
+long get_time_nano(struct timespec* ts) {
+    return (long)ts->tv_sec * 1e9 + ts->tv_nsec;
+}
+
+double get_elapsed_time_sec(struct timespec* before, struct timespec* after) {
+    double deltat_s  = after->tv_sec - before->tv_sec;
+    double deltat_ns = after->tv_nsec - before->tv_nsec;
+    return deltat_s + deltat_ns*1e-9;
+}
+
+long get_elapsed_time_nano(struct timespec* before, struct timespec* after) {
+    return get_time_nano(after) - get_time_nano(before);
+}
+
+    struct timespec s;
+    struct timespec e;
+
 #define NF_TAG "upf_u"
 
 #if 0
@@ -121,7 +146,11 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     UTLT_Assert(session, return NULL, "session not found error");
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
     UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
-
+    // printf("TEID HIT\n");
+    // get_monotonic_time(&s);
+    interface();
+    // get_monotonic_time(&e);
+    // printf("%lu\n", get_elapsed_time_nano(&s, &e));
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL;
     while (node) {
@@ -255,7 +284,10 @@ static int packet_handler(struct rte_mbuf *pkt,
         // extract TEID from
         // Step 2: Get PDR rule
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
+        get_monotonic_time(&s);
         pdr = GetPdrByTeid(pkt, teid);
+        get_monotonic_time(&e);
+        printf("%lu\n", get_elapsed_time_nano(&s, &e));
     } else {
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
@@ -339,7 +371,7 @@ int main(int argc, char *argv[]) {
     UpfSessionPoolInit ();
     UeIpToUpfSessionMapInit();
     TeidToUpfSessionMapInit();
-
+    createCLS();
     onvm_nflib_run(nf_local_ctx);
 
     onvm_nflib_stop(nf_local_ctx);
