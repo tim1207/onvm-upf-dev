@@ -107,6 +107,8 @@
 /* If a lot of children spawned this might need to be increased */
 #define NF_TERM_STOP_ITER_TIMES 10
 
+#define ARP_NF_ID 11
+
 struct onvm_pkt_meta {
         uint8_t action;       /* Action to be performed */
         uint16_t destination; /* where to go next */
