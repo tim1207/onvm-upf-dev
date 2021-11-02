@@ -249,7 +249,7 @@ send_arp_reply(int port, struct rte_ether_addr *tha, uint32_t tip, struct onvm_n
         out_arp_hdr->arp_opcode = rte_cpu_to_be_16(RTE_ARP_OP_REPLY);
 
         rte_ether_addr_copy(&ports->mac[port], &out_arp_hdr->arp_data.arp_sha);
-        out_arp_hdr->arp_data.arp_sip = state_info->source_ips[ports->id[port]];
+        out_arp_hdr->arp_data.arp_sip = rte_cpu_to_be_32(state_info->source_ips[ports->id[port]]);
 
         out_arp_hdr->arp_data.arp_tip = tip;
         rte_ether_addr_copy(tha, &out_arp_hdr->arp_data.arp_tha);
@@ -268,6 +268,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         struct rte_ether_hdr *eth_hdr = onvm_pkt_ether_hdr(pkt);
         struct rte_arp_hdr *in_arp_hdr = NULL;
         int result = -1;
+	int i = 0;
 
         /*
          * First check if pkt is of type ARP:
@@ -280,16 +281,18 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
                 in_arp_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_arp_hdr *, sizeof(struct rte_ether_hdr));
                 switch (rte_cpu_to_be_16(in_arp_hdr->arp_opcode)) {
                         case RTE_ARP_OP_REQUEST:
-                                if (rte_be_to_cpu_32(in_arp_hdr->arp_data.arp_tip) ==
-                                                state_info->source_ips[ports->id[pkt->port]]) {
-                                        result = send_arp_reply(pkt->port, &eth_hdr->s_addr,
-                                                                in_arp_hdr->arp_data.arp_sip, nf_local_ctx->nf);
-                                        if (state_info->print_flag) {
-                                                printf("ARP Reply From Port %d (ID %d): %d\n", pkt->port,
-                                                       ports->id[pkt->port], result);
-                                        }
-                                        meta->action = ONVM_NF_ACTION_DROP;
-                                        return 0;
+				for (i = 0; i < ports->num_ports; i++) {
+					if (rte_be_to_cpu_32(in_arp_hdr->arp_data.arp_tip) ==
+							state_info->source_ips[ports->id[i]]) {
+						result = send_arp_reply(i, &eth_hdr->s_addr,
+									in_arp_hdr->arp_data.arp_sip, nf_local_ctx->nf);
+						if (state_info->print_flag) {
+							printf("ARP Reply From Port %d (ID %d): %d\n", pkt->port,
+							       ports->id[pkt->port], result);
+						}
+						meta->action = ONVM_NF_ACTION_DROP;
+						return 0;
+					}
                                 }
                                 break;
                         case RTE_ARP_OP_REPLY:

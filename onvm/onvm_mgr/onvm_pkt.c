@@ -57,6 +57,8 @@ void
 onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uint16_t rx_count) {
         uint16_t i;
         struct onvm_pkt_meta *meta;
+	struct rte_ether_hdr *eth_hdr;
+	uint16_t ether_type;
 #ifdef FLOW_LOOKUP
         struct onvm_flow_entry *flow_entry;
         struct onvm_service_chain *sc;
@@ -78,8 +80,16 @@ onvm_pkt_process_rx_batch(struct queue_mgr *rx_mgr, struct rte_mbuf *pkts[], uin
                         meta->destination = onvm_sc_next_destination(sc, pkts[i]);
                 } else {
 #endif
-                        meta->action = onvm_sc_next_action(default_chain, pkts[i]);
-                        meta->destination = onvm_sc_next_destination(default_chain, pkts[i]);
+                        eth_hdr = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
+                        ether_type = eth_hdr->ether_type;
+
+                        if (ether_type == rte_cpu_to_be_16(RTE_ETHER_TYPE_ARP)) {
+                                meta->action = ONVM_NF_ACTION_TONF;
+                                meta->destination = ARP_NF_ID;
+                        } else {
+                                meta->action = onvm_sc_next_action(default_chain, pkts[i]);
+                                meta->destination = onvm_sc_next_destination(default_chain, pkts[i]);
+			}
 #ifdef FLOW_LOOKUP
                 }
 #endif
