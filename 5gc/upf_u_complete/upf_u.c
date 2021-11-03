@@ -72,7 +72,12 @@
 #define SRC_INTF_CP         3
 #define SRC_INTF_NUM        (SRC_INTF_CP + 1)
 
-#if 0 //use to set extension header
+#define NEH //for not set extension header
+#define MODIFY // the code been modify or increase
+
+#ifdef NEH 
+#else
+//use to set extension header
 typedef struct gtp1_hdr_opt {
 	uint16_t 	seq_number;
 	uint8_t	    NPDU;
@@ -100,7 +105,9 @@ typedef struct pdu_sess_container_hdr {
 } __attribute__((packed)) pdu_sess_container_hdr_t;
 #endif
 
+#ifdef MODIFY
 bool DL_flag = false;//check is DL flow or not (use to set mac address)
+#endif
 
 static inline uint8_t SourceInterfaceToPort (uint8_t interface) {
     switch (interface) {
@@ -189,25 +196,33 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                                 uint16_t outerHeaderLen = 0;
                                 outerHeaderLen = sizeof(struct rte_ipv4_hdr) +
                                                  sizeof(struct rte_udp_hdr) +
+#ifdef NEH                                                 
                                                  sizeof(gtpv1_t) ; // GTPv1 Header
-                                                 //sizeof(gtpv1_t) + 8; //GTPV1 Header + extension 
-                                                 
+#else
+                                                 sizeof(gtpv1_t) + 8; //GTPV1 Header + extension 
+#endif                                                
 
                                 struct rte_ipv4_hdr *ipv4_hdr = (struct rte_ipv4_hdr * )rte_pktmbuf_prepend(pkt, outerHeaderLen);
                                 onvm_pkt_fill_ipv4(ipv4_hdr, rte_cpu_to_be_32(SELF_IP), rte_cpu_to_be_32(outerHeaderCreation->ipv4.s_addr), IPPROTO_UDP);
+#ifdef NEH
                                 ipv4_hdr->total_length = rte_cpu_to_be_16(pkt->data_len-outerHeaderLen+ sizeof(gtpv1_t) + sizeof(struct rte_udp_hdr) +sizeof(struct rte_ipv4_hdr));//raw+gtp8+udp8+ip20
-                                //ipv4_hdr->total_length = rte_cpu_to_be_16(pkt->data_len-outerHeaderLen+ sizeof(gtpv1_t) + 8 +sizeof(struct rte_udp_hdr) +sizeof(struct rte_ipv4_hdr));//raw+gtp8+extension8+udp8+ip20
-                                
+#else                                
+                                ipv4_hdr->total_length = rte_cpu_to_be_16(pkt->data_len-outerHeaderLen+ sizeof(gtpv1_t) + 8 +sizeof(struct rte_udp_hdr) +sizeof(struct rte_ipv4_hdr));//raw+gtp8+extension8+udp8+ip20
+#endif                                
                                 ipv4_hdr->hdr_checksum = rte_ipv4_cksum(ipv4_hdr);
 
                                 struct rte_udp_hdr *udp_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_udp_hdr *, sizeof(struct rte_ipv4_hdr));
+#ifdef NEH                                
                                 onvm_pkt_fill_udp(udp_hdr, UDP_PORT_FOR_GTP, UDP_PORT_FOR_GTP, pkt->data_len - outerHeaderLen + sizeof(gtpv1_t));//pktdatalen-outerheaderlen=rawpacket_len, but here, udppayloadlen should be raw + gtp header 
-                                //onvm_pkt_fill_udp(udp_hdr, UDP_PORT_FOR_GTP, UDP_PORT_FOR_GTP, pkt->data_len - outerHeaderLen + sizeof(gtpv1_t) + 8);//pktdatalen-outerheaderlen=rawpacket_len, but here, udppayloadlen should be raw + gtp header + extension
-
+#else                                
+                                onvm_pkt_fill_udp(udp_hdr, UDP_PORT_FOR_GTP, UDP_PORT_FOR_GTP, pkt->data_len - outerHeaderLen + sizeof(gtpv1_t) + 8);//pktdatalen-outerheaderlen=rawpacket_len, but here, udppayloadlen should be raw + gtp header + extension
+#endif
                                 gtpv1_t *gtp_hdr = rte_pktmbuf_mtod_offset(pkt, gtpv1_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr));
+#ifdef NEH
                                 gtpv1_set_header(gtp_hdr, pkt->data_len - outerHeaderLen , outerHeaderCreation->teid);
-                                //gtpv1_set_header(gtp_hdr, pkt->data_len - outerHeaderLen + 8, outerHeaderCreation->teid);//extension+8
-/*
+#else
+                                gtpv1_set_header(gtp_hdr, pkt->data_len - outerHeaderLen + 8, outerHeaderCreation->teid);//extension+8
+
                                 gtp_hdr->flags=0x34;
                                 gtpv1_hdr_opt_t *gtp_opt_hdr = rte_pktmbuf_mtod_offset(pkt, gtpv1_hdr_opt_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t));
                                 gtp_opt_hdr->seq_number = 0;
@@ -218,7 +233,7 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, struct onvm_pkt_me
                                 pdu_ss_ctr->length = 0x01;
                                 pdu_ss_ctr->pdu_sess_ctr = rte_cpu_to_be_16(9);
                                 pdu_ss_ctr->next_hdr = 0x00;
-*/
+#endif
                             }   break;
                             case UPDK_OUTER_HEADER_CREATION_DESCRIPTION_GTPU_UDP_IPV6:
                             case UPDK_OUTER_HEADER_CREATION_DESCRIPTION_UDP_IPV4:
@@ -269,7 +284,8 @@ static inline void AttachL2Header(struct rte_mbuf *pkt) {
     for (j = 0; j < RTE_ETHER_ADDR_LEN; ++j) {
         eth_hdr->d_addr.addr_bytes[j] = j;
     }
-    
+
+ #ifdef MODIFY   
     //next hop's mac address
     if(DL_flag){
         eth_hdr->d_addr.addr_bytes[0] = 0x3c;
@@ -287,6 +303,7 @@ static inline void AttachL2Header(struct rte_mbuf *pkt) {
         eth_hdr->d_addr.addr_bytes[4] = 0xff;
         eth_hdr->d_addr.addr_bytes[5] = 0x96;
     }
+#endif
 
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 }
@@ -302,7 +319,9 @@ static int packet_handler(struct rte_mbuf *pkt,
     }
 
     UPDK_PDR *pdr = NULL;
+#ifdef MODIFY    
     DL_flag = false;
+#endif
     // Step 1: Identify if it is a uplink packet or downlink packet
     if (iph->dst_addr == SELF_IP) {  //
         struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
@@ -317,7 +336,9 @@ static int packet_handler(struct rte_mbuf *pkt,
     } else {
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
+#ifdef MODIFY
         DL_flag = true;
+#endif
     }
 
     if (!pdr) {
@@ -342,7 +363,9 @@ static int packet_handler(struct rte_mbuf *pkt,
             case OUTER_HEADER_REMOVAL_GTP_IP4: {
                 outerHeaderLen = sizeof(struct rte_ipv4_hdr) +
                                  sizeof(struct rte_udp_hdr) +
+#ifdef MODIFY                                 
                                  sizeof(gtpv1_t)+8; // GTPv1 Header + extension
+#endif
                 rte_pktmbuf_adj(pkt, outerHeaderLen);
             } break;
             case OUTER_HEADER_REMOVAL_GTP_IP6:
