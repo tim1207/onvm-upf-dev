@@ -138,6 +138,24 @@ Status UpfFARDeregisterToSessionByID(UpfSession *session, uint16_t id) {
     return STATUS_OK;
 }
 
+Status UpfQERDeregisterToSessionByID(UpfSession *session, uint16_t id) {
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->qer_list, return STATUS_ERROR, "QER list not initialized");
+
+    list_node_t *node = NULL;
+    list_iterator_t *it;
+    it = list_iterator_new(session->qer_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfQER *qer = (UpfQER *) node->val;
+        if (qer->qerId == id) {
+            break;
+        }
+    }
+    UTLT_Assert(node, return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", id);
+    list_remove(session->qer_list, node);
+    return STATUS_OK;
+}
+
 Status UpfPDRRegisterToSession(UpfSession *session, UpfPDR *pdr) {
     UTLT_Assert(session, return STATUS_ERROR, "session not found error");
     UTLT_Assert(session->pdr_list, return STATUS_ERROR, "PDR list not initialized");
@@ -150,6 +168,13 @@ Status UpfFARRegisterToSession(UpfSession *session, UpfFAR * far) {
     UTLT_Assert(session->far_list, return STATUS_ERROR, "FAR list not initialized");
 
     list_rpush(session->far_list, list_node_new(far));
+}
+
+Status UpfQERRegisterToSession(UpfSession *session, UpfQER *qer){
+    UTLT_Assert(session, return STATUS_ERROR, "session not found error");
+    UTLT_Assert(session->qer_list, return STATUS_ERROR, "QER list not initialized");
+
+    list_rpush(session->qer_list, list_node_new(qer));
 }
 
 UpfPDR *UpfPDRFindByID(UpfSession *session, uint16_t id) {
@@ -188,6 +213,24 @@ UpfFAR *UpfFARFindByID(UpfSession *session, uint16_t id) {
     return NULL;
 }
 
+UpfQER *UpfQERFindByID(UpfSession *session, uint16_t id){
+    UTLT_Assert(session, return NULL, "session not found error");
+    UTLT_Assert(session->qer_list, return NULL, "QER list not initialized");
+
+    list_node_t *node;
+    list_iterator_t *it;
+    it = list_iterator_new(session->qer_list, LIST_HEAD);
+    while ((node = list_iterator_next(it))) {
+        UpfQER *qer = (UpfQER *) node->val;
+        if (qer->qerId == id) {
+            list_iterator_destroy(it);
+            return qer;
+        }
+    }
+    list_iterator_destroy(it);
+    return NULL;
+}
+
 UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
                           PfcpFTeid *teid,
                           uint8_t *dnn,
@@ -203,6 +246,7 @@ UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
 
     session->pdr_list = list_new();
     session->far_list = list_new();
+    session->qer_list = list_new();
     //use to check srr flag
     session->srr_flag = false;
 

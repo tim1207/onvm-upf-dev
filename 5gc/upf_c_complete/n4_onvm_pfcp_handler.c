@@ -16,6 +16,7 @@
 #include "updk/rule.h"
 #include "updk/rule_pdr.h"
 #include "updk/rule_far.h"
+#include "updk/rule_qer.h"
 
 /*
  * Note: When apply a IE from PDR or FAR, you should check all
@@ -202,12 +203,9 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
 
     if (createPdr->qERID.presence) {
         // TODO: Need to handle multiple QER
-        /*
         upfPdr->flags.qerId = 1;
         upfPdr->qerId = ntohl(*((uint32_t *)createPdr->qERID.value));
         UTLT_Debug("PDR QER ID: %u", upfPdr->qerId);
-        */
-        UTLT_Warning("UPF do NOT support QER yet");
     }
 
     if (createPdr->activatePredefinedRules.presence) {
@@ -243,6 +241,12 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
     if (upfPdr->flags.farId) {
         upfPdr->far = UpfFARFindByID(session, upfPdr->farId);
         UTLT_Assert(upfPdr->far, rte_free(upfPdr); return STATUS_ERROR, "FAR ID[%u] does NOT exist in UPF Context", upfPdr->farId);
+    }
+
+    //put upfqer in upfpdr
+    if (upfPdr->flags.qerId) {
+        upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
+        UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
     }
 
     // Register PDR to Session
@@ -364,6 +368,133 @@ Status UpfN4HandleCreateFar(UpfSession *session, CreateFAR *createFar) {
     UTLT_Assert(UpfFARRegisterToSession(session, upfFar),
                 return STATUS_ERROR,
                 "UpfFARRegisterToSession failed");
+    return STATUS_OK;
+}
+
+Status _ConvertCreateQERTlvToRule(UpfQER *upfQer, CreateQER *createQer) {
+    UTLT_Assert(upfQer && createQer, return STATUS_ERROR,
+        "UpfQER or CreateQER pointer should not be NULL");
+
+    int offset;
+
+    if (createQer->qERID.presence) {
+        upfQer->flags.qerId = 1;
+        upfQer->qerId = ntohl(*((uint32_t *) createQer->qERID.value));
+        UTLT_Debug("QER ID: %u", QERGetID(upfQer));
+    }
+
+    if (createQer->qERCorrelationID.presence) {
+        upfQer->flags.qerCorrelationId = 1;
+        upfQer->qerCorrelationId = ntohl(*((uint32_t *) createQer->qERCorrelationID.value));
+        UTLT_Debug("QER Correlation ID value: %u", QERGetCorrelationID(upfQer));
+    }
+
+    if (createQer->gateStatus.presence) {
+        upfQer->flags.gateStatus = 1;
+        upfQer->gateStatus = *((uint8_t *) createQer->gateStatus.value);
+        UTLT_Debug("QER Gate Status: %u", QERGetGateStatus(upfQer));
+    }
+
+    if (createQer->maximumBitrate.presence) {
+        upfQer->flags.maximumBitrate = 1;
+        Pfcp5ByteBitRateToHost(createQer->maximumBitrate.value, &upfQer->maximumBitrate.ul);
+        Pfcp5ByteBitRateToHost(createQer->maximumBitrate.value + sizeof(uint8_t) * 5, &upfQer->maximumBitrate.dl);
+        UTLT_Debug("QER MBR UL: %u, DL: %u", QERGetMBRUL(upfQer), QERGetMBRDL(upfQer));
+    }
+
+    if (createQer->guaranteedBitrate.presence) {
+        upfQer->flags.guaranteedBitrate = 1;
+        Pfcp5ByteBitRateToHost(createQer->guaranteedBitrate.value, &upfQer->guaranteedBitrate.ul);
+        Pfcp5ByteBitRateToHost(createQer->guaranteedBitrate.value + sizeof(uint8_t) * 5, &upfQer->guaranteedBitrate.dl);
+        UTLT_Debug("QER GBR UL: %u, DL: %u", QERGetGBRUL(upfQer), QERGetGBRDL(upfQer));
+    }
+
+    if (createQer->packetRate.presence) {
+        upfQer->flags.packetRate = 1;
+        memcpy(&upfQer->packetRate.flags, createQer->packetRate.value, sizeof(uint8_t));
+        UTLT_Debug("QER Packet Rate flags ulpr: %u, dlpr : %u",
+                QERGetPacketRate(upfQer).flags.ulpr, QERGetPacketRate(upfQer).flags.dlpr);
+        offset = sizeof(uint8_t);
+        
+        if (QERGetPacketRate(upfQer).flags.ulpr) {
+            upfQer->packetRate.uplinkTimeUnit = *((uint8_t *) (createQer->packetRate.value + offset));
+            upfQer->packetRate.maximumUplinkPacketRate = ntohs(*((uint16_t *) (createQer->packetRate.value + offset + 1)));
+            UTLT_Debug("QER Packet Rate Uplink Time Unit: %u, Maximum Uplink Packet Rate: %u",
+                    QERGetPacketRateULTimeUnit(upfQer), QERGetPacketRateMaxUL(upfQer));
+            offset += 3;
+        }
+
+        if (QERGetPacketRate(upfQer).flags.dlpr) {
+            upfQer->packetRate.downlinkTimeUnit = *((uint8_t *) (createQer->packetRate.value + offset));
+            upfQer->packetRate.maximumDownlinkPacketRate = ntohs(*((uint16_t *) (createQer->packetRate.value + offset + 1)));
+            UTLT_Debug("QER Packet Rate Downlink Time Unit: %u, Maximum Downlink Packet Rate: %u",
+                    QERGetPacketRateDLTimeUnit(upfQer), QERGetPacketRateMaxDL(upfQer));
+            // offset += 3;
+        }
+    }
+
+    if (createQer->dLFlowLevelMarking.presence) {
+        upfQer->flags.dlFlowLevelMarking = 1;
+        memcpy(&upfQer->dlFlowLevelMarking.flags, createQer->dLFlowLevelMarking.value, sizeof(uint8_t));
+        UTLT_Debug("QER DL Flow Level Marking flags TTC: %u, SCI: %u",
+                QERGetDLFlowLevelMark(upfQer).flags.ttc, QERGetDLFlowLevelMark(upfQer).flags.sci);
+        offset = sizeof(uint8_t);
+
+        if (QERGetDLFlowLevelMark(upfQer).flags.ttc) {
+            // TS 29.244 8.2.66 The ToS/Traffic Class field, when present, shall be encoded on two octets as an OctetString
+            upfQer->dlFlowLevelMarking.tosTrafficClass = *((uint16_t *) (createQer->dLFlowLevelMarking.value + offset));
+            UTLT_Debug("QER DL Flow Level Marking ToS/Traffic Class: %u",
+                    QERGetDLFlowLevelMarkTTC(upfQer));
+            offset += sizeof(uint16_t);
+        }
+
+        if (QERGetDLFlowLevelMark(upfQer).flags.sci) {
+            upfQer->dlFlowLevelMarking.serviceClassIndicator = *((uint16_t *) (createQer->dLFlowLevelMarking.value + offset));
+            UTLT_Debug("QER DL Flow Level Marking Service Class Indicator: %u",
+                    QERGetDLFlowLevelMarkSCI(upfQer));
+            // offset += sizeof(uint16_t);
+        }
+    }
+
+    if (createQer->qoSFlowIdentifier.presence) {
+        upfQer->flags.qosFlowIdentifier = 1;
+        upfQer->qosFlowIdentifier = *((uint8_t *) (createQer->qoSFlowIdentifier.value));
+        UTLT_Debug("QER QoS Flow Identifier: %u", QERGetQFI(upfQer));
+    }
+
+    if (createQer->reflectiveQoS.presence) {
+        upfQer->flags.reflectiveQos = 1;
+        upfQer->reflectiveQos = *((uint8_t *) (createQer->reflectiveQoS.value));
+        UTLT_Debug("QER Reflective QoS: %u", QERGetRQI(upfQer));
+    }
+
+    return STATUS_OK;
+}
+
+Status UpfN4HandleCreateQer(UpfSession *session, CreateQER *createQer) {
+    UTLT_Debug("Handle Create QER");
+
+    UTLT_Assert(createQer->qERID.presence, return STATUS_ERROR,
+                "Qer ID not presence");
+    UTLT_Assert(createQer->gateStatus.presence,
+                return STATUS_ERROR, "Gate Status not presence");
+
+    uint32_t qerID = ntohl(*((uint32_t *) createQer->qERID.value));
+
+    //need to implement this function
+    UpfQER *upfQer = UpfQERFindByID(session, qerID);
+    UTLT_Assert( upfQer == NULL, return STATUS_ERROR , "QER ID[%u] does NOT exist in UPF Context", qerID);
+
+    upfQer = rte_calloc(NULL, 1, sizeof(UpfQER), 0);
+
+    UTLT_Assert(_ConvertCreateQERTlvToRule(upfQer, createQer) == STATUS_OK,
+        return STATUS_ERROR, "Convert Create QER TLV To Rule is failed");
+    
+    // Register QER to Session
+    //need to implement this function
+    UTLT_Assert(UpfQERRegisterToSession(session, upfQer),
+        return STATUS_ERROR, "UpfQERRegisterToSession failed");
+
     return STATUS_OK;
 }
 
@@ -736,6 +867,125 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
     return STATUS_OK;
 }
 
+Status _ConvertUpdateQERTlvToRule(UpfQER *upfQer, UpdateQER *updateQer) {
+    UTLT_Assert(upfQer && updateQer, return STATUS_ERROR,
+        "UpfQER or UpdateQER pointer should not be NULL");
+
+    int offset;
+
+// UpdateQER is same as CreateQER, so these are copied from _ConvertCreateQERTlvToRule
+    if (updateQer->qERID.presence) {
+        upfQer->flags.qerId = 1;
+        upfQer->qerId = ntohl(*((uint32_t *) updateQer->qERID.value));
+        UTLT_Debug("QER ID: %u", QERGetID(upfQer));
+    }
+
+    if (updateQer->qERCorrelationID.presence) {
+        upfQer->flags.qerCorrelationId = 1;
+        upfQer->qerCorrelationId = ntohl(*((uint32_t *) updateQer->qERCorrelationID.value));
+        UTLT_Debug("QER Correlation ID value: %u", QERGetCorrelationID(upfQer));
+    }
+
+    if (updateQer->gateStatus.presence) {
+        upfQer->flags.gateStatus = 1;
+        upfQer->gateStatus = *((uint8_t *) updateQer->gateStatus.value);
+        UTLT_Debug("QER Gate Status: %u", QERGetGateStatus(upfQer));
+    }
+
+    if (updateQer->maximumBitrate.presence) {
+        upfQer->flags.maximumBitrate = 1;
+        Pfcp5ByteBitRateToHost(updateQer->maximumBitrate.value, &upfQer->maximumBitrate.ul);
+        Pfcp5ByteBitRateToHost(updateQer->maximumBitrate.value + sizeof(uint8_t) * 5, &upfQer->maximumBitrate.dl);
+        UTLT_Debug("QER MBR UL: %u, DL: %u", QERGetMBRUL(upfQer), QERGetMBRDL(upfQer));
+    }
+
+    if (updateQer->guaranteedBitrate.presence) {
+        upfQer->flags.guaranteedBitrate = 1;
+        Pfcp5ByteBitRateToHost(updateQer->guaranteedBitrate.value, &upfQer->guaranteedBitrate.ul);
+        Pfcp5ByteBitRateToHost(updateQer->guaranteedBitrate.value + sizeof(uint8_t) * 5, &upfQer->guaranteedBitrate.dl);
+        UTLT_Debug("QER GBR UL: %u, DL: %u", QERGetGBRUL(upfQer), QERGetGBRDL(upfQer));
+    }
+
+    if (updateQer->packetRate.presence) {
+        upfQer->flags.packetRate = 1;
+        memcpy(&upfQer->packetRate.flags, updateQer->packetRate.value, sizeof(uint8_t));
+        UTLT_Debug("QER Packet Rate flags ulpr: %u, dlpr : %u",
+                QERGetPacketRate(upfQer).flags.ulpr, QERGetPacketRate(upfQer).flags.dlpr);
+        offset = sizeof(uint8_t);
+        
+        if (QERGetPacketRate(upfQer).flags.ulpr) {
+            upfQer->packetRate.uplinkTimeUnit = *((uint8_t *) (updateQer->packetRate.value + offset));
+            upfQer->packetRate.maximumUplinkPacketRate = ntohs(*((uint16_t *) (updateQer->packetRate.value + offset + 1)));
+            UTLT_Debug("QER Packet Rate Uplink Time Unit: %u, Maximum Uplink Packet Rate: %u",
+                    QERGetPacketRateULTimeUnit(upfQer), QERGetPacketRateMaxUL(upfQer));
+            offset += 3;
+        }
+
+        if (QERGetPacketRate(upfQer).flags.dlpr) {
+            upfQer->packetRate.downlinkTimeUnit = *((uint8_t *) (updateQer->packetRate.value + offset));
+            upfQer->packetRate.maximumDownlinkPacketRate = ntohs(*((uint16_t *) (updateQer->packetRate.value + offset + 1)));
+            UTLT_Debug("QER Packet Rate Downlink Time Unit: %u, Maximum Downlink Packet Rate: %u",
+                    QERGetPacketRateDLTimeUnit(upfQer), QERGetPacketRateMaxDL(upfQer));
+            // offset += 3;
+        }
+    }
+
+    if (updateQer->dLFlowLevelMarking.presence) {
+        upfQer->flags.dlFlowLevelMarking = 1;
+        memcpy(&upfQer->dlFlowLevelMarking.flags, updateQer->dLFlowLevelMarking.value, sizeof(uint8_t));
+        UTLT_Debug("QER DL Flow Level Marking flags TTC: %u, SCI: %u",
+                QERGetDLFlowLevelMark(upfQer).flags.ttc, QERGetDLFlowLevelMark(upfQer).flags.sci);
+        offset = sizeof(uint8_t);
+
+        if (QERGetDLFlowLevelMark(upfQer).flags.ttc) {
+            // TS 29.244 8.2.66 The ToS/Traffic Class field, when present, shall be encoded on two octets as an OctetString
+            upfQer->dlFlowLevelMarking.tosTrafficClass = *((uint16_t *) (updateQer->dLFlowLevelMarking.value + offset));
+            UTLT_Debug("QER DL Flow Level Marking ToS/Traffic Class: %u",
+                    QERGetDLFlowLevelMarkTTC(upfQer));
+            offset += sizeof(uint16_t);
+        }
+
+        if (QERGetDLFlowLevelMark(upfQer).flags.sci) {
+            upfQer->dlFlowLevelMarking.serviceClassIndicator = *((uint16_t *) (updateQer->dLFlowLevelMarking.value + offset));
+            UTLT_Debug("QER DL Flow Level Marking Service Class Indicator: %u",
+                    QERGetDLFlowLevelMarkSCI(upfQer));
+            // offset += sizeof(uint16_t);
+        }
+    }
+
+    if (updateQer->qoSFlowIdentifier.presence) {
+        upfQer->flags.qosFlowIdentifier = 1;
+        upfQer->qosFlowIdentifier = *((uint8_t *) (updateQer->qoSFlowIdentifier.value));
+        UTLT_Debug("QER QoS Flow Identifier: %u", QERGetQFI(upfQer));
+    }
+
+    if (updateQer->reflectiveQoS.presence) {
+        upfQer->flags.reflectiveQos = 1;
+        upfQer->reflectiveQos = *((uint8_t *) (updateQer->reflectiveQoS.value));
+        UTLT_Debug("QER Reflective QoS: %u", QERGetRQI(upfQer));
+    }
+
+    return STATUS_OK;
+}
+
+Status UpfN4HandleUpdateQer(UpfSession *session, UpdateQER *updateQer) {
+    UTLT_Debug("Handle Update QER");
+
+    UTLT_Assert(updateQer->qERID.presence,
+                return STATUS_ERROR, "QER ID not presence");
+
+    uint32_t qerID = ntohl(*((uint32_t *)updateQer->qERID.value));
+
+    UpfQER *upfQer = UpfQERFindByID(session, qerID);
+    UTLT_Assert(upfQer != NULL, return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", qerID);
+
+    UTLT_Assert(_ConvertUpdateQERTlvToRule(upfQer, updateQer) == STATUS_OK,
+        return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
+
+ 
+    return STATUS_OK;
+}
+
 Status UpfN4HandleRemovePdr(UpfSession *session, uint16_t nPDRID) {
     uint16_t pdrID = ntohs(nPDRID);
 
@@ -770,6 +1020,22 @@ Status UpfN4HandleRemoveFar(UpfSession *session, uint32_t nFARID) {
     return STATUS_OK;
 }
 
+Status UpfN4HandleRemoveQer(UpfSession *session, uint32_t nQERID) {
+    uint32_t qerID = ntohl(nQERID);
+
+    UTLT_Debug("Handle Remove QER[%u]", qerID);
+    UTLT_Assert(qerID, return STATUS_ERROR,
+                "farId should not be 0");
+    UTLT_Assert(session, return STATUS_ERROR,
+                "session not found");
+
+    // Deregister QER to Session
+    UTLT_Assert(UpfQERDeregisterToSessionByID(session, qerID) == STATUS_OK,
+                return STATUS_ERROR, 
+                "UpfQERDeregisterToSession failed");
+    return STATUS_OK;
+}
+
 Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfcpXact,
                                               PFCPSessionEstablishmentRequest *request) {
     Status status;
@@ -789,7 +1055,8 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
         UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create FAR error");
     }
-    if (request->createPDR[1].presence) {
+    //request->createFAR[1].presence?
+    if (request->createFAR[1].presence) {
         status = UpfN4HandleCreateFar(session, &request->createFAR[1]);
         UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create FAR error");
@@ -803,6 +1070,9 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     }
     if (request->createQER.presence) {
         // TODO
+        status = UpfN4HandleCreateQer(session, &request->createQER);
+        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
+                    "Create QER error");
     }
 
     // The order of PDF should be the lastest
@@ -872,6 +1142,13 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
                     "Modification: Create FAR2 error");
     }
 
+    /*Create QER*/
+    if( request->createQER.presence){
+        status = UpfN4HandleCreateQer(session, &request->createQER);
+        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                    "Modification: Create QER error");
+    }
+
     // The order of PDF should be the lastest
     /* Create PDR */
     if (request->createPDR[0].presence) {
@@ -894,6 +1171,15 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
                     "Modification: Update FAR error");
     }
 
+    /* Update QER */
+    if (request->updateQER.presence){
+        UTLT_Assert(request->updateQER.qERID.presence == 1, ,
+                    "[PFCP] QerId in updateQER not presence");
+        status = UpfN4HandleUpdateQer(session, &request->updateQER);
+        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                    "Modification: Update QER error");
+    }
+
     // The order of PDF should be the lastest
     /* Update PDR */
     if (request->updatePDR.presence) {
@@ -914,6 +1200,15 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
                     "Modification: Remove FAR error");
     }
 
+    /* Remove QER */
+    if (request->removeQER.presence){
+        UTLT_Assert(request->removeQER.qERID.presence == 1, ,
+                    "[PFCP] QerId in remove QER not presence");
+        status = UpfN4HandleRemoveQer(session, *(uint32_t*)
+                                        request->removeQER.qERID.value);
+        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                    "Modification: Remove QER error");
+    }
     // The order of PDF should be the lastest
     /* Remove PDR */
     if (request->removePDR.presence) {

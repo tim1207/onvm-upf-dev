@@ -19,7 +19,7 @@ Status PfcpIpToUeIpAddr(Ip *ip, PfcpUeIpAddr *ueIp, int *len);
 Status PfcpOuterHdrToIp(PfcpOuterHdr *outerHdr, Ip *ip);
 Status PfcpSockaddrToFTeid(
     SockAddr *addr, SockAddr *addr6, PfcpFTeid *fTeid, int *len);
-
+Status Pfcp5ByteBitRateToHost(uint8_t *bitRate, uint64_t *hostType);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

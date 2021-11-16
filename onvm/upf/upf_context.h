@@ -22,6 +22,7 @@
 #include "updk/init.h"
 #include "updk/rule_pdr.h"
 #include "updk/rule_far.h"
+#include "updk/rule_qer.h"
 
 #include "list.h"
 
@@ -34,6 +35,7 @@ typedef struct _UpfUeIp      UpfUeIp;
 // Rule structure dependent on UPDK
 typedef UPDK_PDR UpfPDR;
 typedef UPDK_FAR UpfFAR;
+typedef UPDK_QER UpfQER;
 
 typedef enum _UpfEvent {
 
@@ -135,6 +137,8 @@ typedef struct _UpfSession {
 
     list_t          *pdr_list;
     list_t          *far_list;
+    list_t          *qer_list;
+
     bool srr_flag;
 } UpfSession;
 
@@ -166,10 +170,15 @@ UpfSession *UpfSessionFindByUeIP(uint32_t ueip);
 
 Status UpfPDRRegisterToSession(UpfSession *session, UpfPDR *pdr);
 Status UpfFARRegisterToSession(UpfSession *session, UpfFAR *far);
+Status UpfQERRegisterToSession(UpfSession *session, UpfQER *qer);//implement//upf_context.c//V
+
 UpfPDR *UpfPDRFindByID(UpfSession *session, uint16_t id);
 UpfFAR *UpfFARFindByID(UpfSession *session, uint16_t id);
+UpfQER *UpfQERFindByID(UpfSession *session, uint16_t id);//implement//V
+
 Status UpfPDRDeregisterToSessionByID(UpfSession *session, uint16_t id);
 Status UpfFARDeregisterToSessionByID(UpfSession *session, uint16_t id);
+Status UpfQERDeregisterToSessionByID(UpfSession *session, uint16_t id);//implement//V
 
 #ifdef __cplusplus
 }

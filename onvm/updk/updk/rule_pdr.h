@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 
 #include "rule_far.h"
+#include "rule_qer.h"
 
 /**
  * These IEs is save as TV type (Tag and Value). Tag is to defined if
@@ -257,7 +258,8 @@ typedef struct {
     uint8_t  outerHeaderRemoval;
     uint32_t farId;
     UPDK_FAR *far;
-
+    UPDK_QER *qer;
+    
     // TODO: Need to handle multiple URR
     uint32_t urrId;
 

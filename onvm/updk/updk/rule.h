@@ -3,6 +3,7 @@
 
 #include "updk/rule_pdr.h"
 #include "updk/rule_far.h"
+#include "updk/rule_qer.h"
 
 /*
  * These functions shall be customized by kinds of device.
@@ -58,7 +59,9 @@ int Gtpv1TunnelUpdateFAR(UPDK_FAR *far);
  */
 int Gtpv1TunnelRemoveFAR(UPDK_FAR *far);
 
-
+int Gtpv1TunnelCreateQER(CreateQER *createQer);
+int Gtpv1TunnelUpdateQER(UpdateQER *updateQer);
+int Gtpv1TunnelRemoveQER(RemoveQER *removeQer);
 /* TODO: Our UPF do not handle these yet.
 int Gtpv1TunnelCreateQER(CreateQER *createQer);
 int Gtpv1TunnelUpdateQER(UpdateQER *updateQer);
