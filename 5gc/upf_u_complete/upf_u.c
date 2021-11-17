@@ -72,11 +72,8 @@
 #define SRC_INTF_CP         3
 #define SRC_INTF_NUM        (SRC_INTF_CP + 1)
 
-//#define NEH //for not set extension header
 #define MODIFY // the code been modify or increase
 
-#ifdef NEH 
-#else
 //use to set extension header
 typedef struct gtp1_hdr_opt {
 	uint16_t 	seq_number;
@@ -103,7 +100,6 @@ typedef struct pdu_sess_container_hdr {
     uint16_t pdu_sess_ctr;
     uint8_t next_hdr;
 } __attribute__((packed)) pdu_sess_container_hdr_t;
-#endif
 
 #ifdef MODIFY
 bool DL_flag = false;//check is DL flow or not (use to set mac address)
@@ -308,6 +304,44 @@ static inline void AttachL2Header(struct rte_mbuf *pkt) {
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 }
 
+static uint16_t get_gtpu_header_len(struct rte_mbuf *pkt){
+    uint16_t gtp_len = sizeof(gtpv1_t);
+
+    gtpv1_t *gtpv1 = rte_pktmbuf_mtod_offset(pkt, gtpv1_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr));
+
+    if( gtpv1->flags & GTP1_F_MASK){
+        gtp_len += 4;
+    }else{
+        return gtp_len;
+    }
+
+    if(gtpv1->flags & GTP1_F_EXTHDR){
+        //check if next header exist
+        uint8_t next_ehdr_type = 0;
+        gtpv1_hdr_opt_t *gtpv1_opt;
+        gtpv1_opt = rte_pktmbuf_mtod_offset( pkt, gtpv1_hdr_opt_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t));
+        next_ehdr_type = gtpv1_opt->next_ehdr_type;
+
+        while(next_ehdr_type){
+            switch (next_ehdr_type)
+            {
+            case GTPV1_NEXT_EXT_HDR_TYPE_85:{
+                pdu_sess_container_hdr_t *ehdr_type_85;
+                //get how many next extension header below
+                ehdr_type_85 = rte_pktmbuf_mtod_offset( pkt, pdu_sess_container_hdr_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t) + sizeof(gtpv1_hdr_opt_t));//offset
+                gtp_len += ( (ehdr_type_85->length) * 4 );
+                next_ehdr_type = ehdr_type_85->next_hdr;
+                break;
+            }
+            default:
+                UTLT_Error("Invalid header type(%x)\n",next_ehdr_type);
+                break;
+            }
+        }
+    }
+    return gtp_len;
+}
+
 static int packet_handler(struct rte_mbuf *pkt,
                           struct onvm_pkt_meta *meta,
                           struct onvm_nf_local_ctx *nf_local_ctx) {
@@ -367,10 +401,12 @@ static int packet_handler(struct rte_mbuf *pkt,
         switch (pdr->outerHeaderRemoval) {
             case OUTER_HEADER_REMOVAL_GTP_IP4: {
                 outerHeaderLen = sizeof(struct rte_ipv4_hdr) +
-                                 sizeof(struct rte_udp_hdr) +
-#ifdef MODIFY                                 
-                                 sizeof(gtpv1_t)+8; // GTPv1 Header + extension
-#endif
+                                 sizeof(struct rte_udp_hdr);
+
+                //get gtp_header     
+                uint16_t gtp_length = get_gtpu_header_len(pkt);
+                outerHeaderLen += gtp_length;
+
                 rte_pktmbuf_adj(pkt, outerHeaderLen);
             } break;
             case OUTER_HEADER_REMOVAL_GTP_IP6:
