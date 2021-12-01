@@ -76,6 +76,33 @@ typedef struct gtpv1_header {
 #define GTP1_F_EXTHDR 0x04
 #define GTP1_F_MASK 0x07
 
+//extension header
+typedef struct gtp1_hdr_opt {
+	uint16_t 	seq_number;
+	uint8_t	    NPDU;
+	uint8_t 	next_ehdr_type;
+/** 3GPP TS 29.281
+ * From Figure 5.2.1-2 Definition of Extension Header Type 
+ */
+#define GTPV1_NEXT_EXT_HDR_TYPE_00	0x00 /* No More extension */
+#define GTPV1_NEXT_EXT_HDR_TYPE_03	0x03 /* Long PDCP PDU Number */
+#define GTPV1_NEXT_EXT_HDR_TYPE_20	0x20 /* Service Class Indicator */
+#define GTPV1_NEXT_EXT_HDR_TYPE_40	0x40 /* UDP Port */
+#define GTPV1_NEXT_EXT_HDR_TYPE_81	0x81 /* RAN Container */
+#define GTPV1_NEXT_EXT_HDR_TYPE_82	0x82 /* Long PDCP PDU Number */
+#define GTPV1_NEXT_EXT_HDR_TYPE_83	0x83 /* Xw RAN Container */
+#define GTPV1_NEXT_EXT_HDR_TYPE_84	0x84 /* NR RAN Container */
+#define GTPV1_NEXT_EXT_HDR_TYPE_85	0x85 /* PDU Session Container */
+#define GTPV1_NEXT_EXT_HDR_TYPE_C0	0xc0 /* PDCP PDU Number */
+
+} __attribute__((packed)) gtpv1_hdr_opt_t;
+
+typedef struct pdu_sess_container_hdr {
+    uint8_t length;
+    uint16_t pdu_sess_ctr;
+    uint8_t next_hdr;
+} __attribute__((packed)) pdu_sess_container_hdr_t;
+
 static __rte_always_inline void gtpv1_set_header(gtpv1_t *gtp_hdr,
                                                  uint16_t payload_len,
                                                  uint32_t teid);
@@ -284,3 +311,41 @@ static inline int32_t get_teid_gtp_packet(struct rte_mbuf *pkt,
   return teid;
 }
 
+//get length of gtp u header
+static inline uint16_t get_gtpu_header_len(struct rte_mbuf *pkt){
+    uint16_t gtp_len = sizeof(gtpv1_t);
+
+    gtpv1_t *gtpv1 = rte_pktmbuf_mtod_offset(pkt, gtpv1_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr));
+
+    if( gtpv1->flags & GTP1_F_MASK){
+        gtp_len += 4;
+    }else{
+        return gtp_len;
+    }
+
+    if(gtpv1->flags & GTP1_F_EXTHDR){
+        //check if next header exist
+        uint8_t next_ehdr_type = 0;
+        gtpv1_hdr_opt_t *gtpv1_opt;
+        gtpv1_opt = rte_pktmbuf_mtod_offset( pkt, gtpv1_hdr_opt_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t));
+        next_ehdr_type = gtpv1_opt->next_ehdr_type;
+
+        while(next_ehdr_type){
+            switch (next_ehdr_type)
+            {
+            case GTPV1_NEXT_EXT_HDR_TYPE_85:{
+                pdu_sess_container_hdr_t *ehdr_type_85;
+                //get how many next extension header below
+                ehdr_type_85 = rte_pktmbuf_mtod_offset( pkt, pdu_sess_container_hdr_t *, sizeof(struct rte_ipv4_hdr) + sizeof(struct rte_udp_hdr) + sizeof(gtpv1_t) + sizeof(gtpv1_hdr_opt_t));//offset
+                gtp_len += ( (ehdr_type_85->length) * 4 );
+                next_ehdr_type = ehdr_type_85->next_hdr;
+                break;
+            }
+            default:
+                printf("Invalid header type(%x)\n",next_ehdr_type);
+                break;
+            }
+        }
+    }
+    return gtp_len;
+}
