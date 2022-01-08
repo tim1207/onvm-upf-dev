@@ -72,11 +72,9 @@
 #define SRC_INTF_CP         3
 #define SRC_INTF_NUM        (SRC_INTF_CP + 1)
 
-#define MODIFY // the code been modify or increase
-
-#ifdef MODIFY
-bool DL_flag = false;//check is DL flow or not (use to set mac address)
-#endif
+static struct rte_ether_addr dn_eth;
+static struct rte_ether_addr cn_dn_eth;
+static struct rte_ether_addr cn_ue_eth;
 
 static inline uint8_t SourceInterfaceToPort (uint8_t interface) {
     switch (interface) {
@@ -164,7 +162,7 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, UPDK_QER *qer, str
                             case UPDK_OUTER_HEADER_CREATION_DESCRIPTION_GTPU_UDP_IPV4: {
                                 uint16_t outerHeaderLen = 0;
                                 uint16_t payloadLen = pkt->data_len;
-                                if(qer){
+                                if (qer) {
                                     outerHeaderLen = sizeof(struct rte_ipv4_hdr) + 
                                                      sizeof(struct rte_udp_hdr) + 
                                                      sizeof(gtpv1_t) +
@@ -200,9 +198,8 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, UPDK_QER *qer, str
 
                                 struct rte_ipv4_hdr *ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, 0);
                                 onvm_pkt_fill_ipv4(ipv4_hdr, rte_cpu_to_be_32(SELF_IP), rte_cpu_to_be_32(outerHeaderCreation->ipv4.s_addr), IPPROTO_UDP);
-                                ipv4_hdr->total_length = rte_cpu_to_be_16(payloadLen + sizeof(gtpv1_t) + sizeof(struct rte_udp_hdr) +sizeof(struct rte_ipv4_hdr));//raw+gtp8+udp8+ip20
+                                ipv4_hdr->total_length = rte_cpu_to_be_16(payloadLen + sizeof(gtpv1_t) + sizeof(struct rte_udp_hdr) +sizeof(struct rte_ipv4_hdr)); //raw+gtp8+udp8+ip20
                                 ipv4_hdr->hdr_checksum = rte_ipv4_cksum(ipv4_hdr);
-
                             }   break;
                             case UPDK_OUTER_HEADER_CREATION_DESCRIPTION_GTPU_UDP_IPV6:
                             case UPDK_OUTER_HEADER_CREATION_DESCRIPTION_UDP_IPV4:
@@ -243,20 +240,15 @@ void HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, UPDK_QER *qer, str
     }
 }
 
-static inline void AttachL2Header(struct rte_mbuf *pkt) {
+static inline void AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
     // Prepend ethernet header
     struct rte_ether_hdr *eth_hdr =
         (struct rte_ether_hdr *)rte_pktmbuf_prepend(
                 pkt, (uint16_t)sizeof(struct rte_ether_hdr));
 
-    int j = 0;
-    for (j = 0; j < RTE_ETHER_ADDR_LEN; ++j) {
-        eth_hdr->d_addr.addr_bytes[j] = j;
-    }
-
- #ifdef MODIFY   
     //next hop's mac address
-    if(DL_flag){
+    if (is_dl == true) {
+        rte_ether_addr_copy(&cn_ue_eth, &eth_hdr->s_addr);
         eth_hdr->d_addr.addr_bytes[0] = 0x3c;
         eth_hdr->d_addr.addr_bytes[1] = 0xfd;
         eth_hdr->d_addr.addr_bytes[2] = 0xfe;
@@ -264,15 +256,10 @@ static inline void AttachL2Header(struct rte_mbuf *pkt) {
         eth_hdr->d_addr.addr_bytes[4] = 0x82;
         eth_hdr->d_addr.addr_bytes[5] = 0xa0;
 
-    }else{
-        eth_hdr->d_addr.addr_bytes[0] = 0x00;
-        eth_hdr->d_addr.addr_bytes[1] = 0x0a;
-        eth_hdr->d_addr.addr_bytes[2] = 0xcd;
-        eth_hdr->d_addr.addr_bytes[3] = 0x3a;
-        eth_hdr->d_addr.addr_bytes[4] = 0xff;
-        eth_hdr->d_addr.addr_bytes[5] = 0x96;
+    } else { 
+        rte_ether_addr_copy(&cn_dn_eth, &eth_hdr->s_addr);
+        rte_ether_addr_copy(&dn_eth, &eth_hdr->d_addr);
     }
-#endif
 
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 }
@@ -280,6 +267,7 @@ static inline void AttachL2Header(struct rte_mbuf *pkt) {
 static int packet_handler(struct rte_mbuf *pkt,
                           struct onvm_pkt_meta *meta,
                           struct onvm_nf_local_ctx *nf_local_ctx) {
+    bool is_dl = false;
     meta->action = ONVM_NF_ACTION_DROP;
     struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
 
@@ -288,9 +276,6 @@ static int packet_handler(struct rte_mbuf *pkt,
     }
 
     UPDK_PDR *pdr = NULL;
-#ifdef MODIFY    
-    DL_flag = false;
-#endif
     // Step 1: Identify if it is a uplink packet or downlink packet
     if (iph->dst_addr == SELF_IP) {  //
         struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
@@ -305,9 +290,7 @@ static int packet_handler(struct rte_mbuf *pkt,
     } else {
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
-#ifdef MODIFY
-        DL_flag = true;
-#endif
+        is_dl = true;
     }
 
     if (!pdr) {
@@ -318,17 +301,11 @@ static int packet_handler(struct rte_mbuf *pkt,
     rte_pktmbuf_adj(pkt, sizeof(struct rte_ether_hdr));
 
     UPDK_FAR *far;
-    UPDK_QER *qer;
-
     far = pdr->far;
     if (!far) {
         printf("There is no FAR related to PDR[%u]\n", pdr->pdrId);
         meta->action = ONVM_NF_ACTION_DROP;
         return 0;
-    }
-    qer = pdr->qer;
-    if (!qer) {
-        printf("There is no QER related to PDR[%u]\n", pdr->pdrId);
     }
 
     if (pdr->flags.outerHeaderRemoval) {
@@ -357,8 +334,8 @@ static int packet_handler(struct rte_mbuf *pkt,
         }
     }
 
-    HandlePacketWithFar(pkt, far, qer, meta);
-    AttachL2Header(pkt);
+    HandlePacketWithFar(pkt, far, pdr->qer, meta);
+    AttachL2Header(pkt, is_dl);
     return 0;
 }
 
@@ -383,9 +360,27 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    int ret;
+    ret = rte_eth_macaddr_get(0, &cn_ue_eth);
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE, "Cannot get MAC address: err=%d, port=%u\n", ret, 0);
+    ret = rte_eth_macaddr_get(1, &cn_dn_eth);
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE, "Cannot get MAC address: err=%d, port=%u\n", ret, 1);
+
+    // 8c:dc:d4:ac:6c:7d
+    dn_eth.addr_bytes[0] = 0x8c;
+    dn_eth.addr_bytes[1] = 0xdc;
+    dn_eth.addr_bytes[2] = 0xd4;
+    dn_eth.addr_bytes[3] = 0xac;
+    dn_eth.addr_bytes[4] = 0x6c;
+    dn_eth.addr_bytes[5] = 0x7d;
+
+
     UpfSessionPoolInit ();
     UeIpToUpfSessionMapInit();
     TeidToUpfSessionMapInit();
+
 
     onvm_nflib_run(nf_local_ctx);
 
