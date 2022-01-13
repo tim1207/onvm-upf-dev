@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
+#include "onvm_nflib.h"
+
 #include "utlt_list.h"
 #include "utlt_network.h"
 
@@ -827,9 +829,12 @@ Status UpfN4HandleUpdateFar(UpfSession *session, UpdateFAR *updateFar) {
 
     //to check the last action
     oldAction = upfFar->applyAction;
+    if (oldAction & PFCP_FAR_APPLY_ACTION_BUFF) {
+         onvm_nflib_send_msg_to_nf(1, NULL);
+    }
+
     UTLT_Assert(_ConvertUpdateFARTlvToRule(upfFar, updateFar) == STATUS_OK,
         return STATUS_ERROR, "Convert FAR TLV To Rule is failed");
-
 
 #if HANDLE_BUFFER
     // Buffered packet handle
