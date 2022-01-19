@@ -81,7 +81,6 @@ static struct rte_ether_addr cn_ue_eth;
 struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
 uint32_t buffer_length = 0;
 
-
 static inline uint8_t SourceInterfaceToPort (uint8_t interface) {
     switch (interface) {
         case SRC_INTF_ACCESS:
@@ -230,7 +229,6 @@ static int HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, UPDK_QER *qe
                 if (buffer_length < MAX_OF_BUFFER_PACKET_SIZE) {
                     Encap(pkt, far, qer);
                     buffer[buffer_length++] = pkt;
-                    meta->action = ONVM_NF_ACTION_OUT;
                     buff = 1;
                 }
                 break;
@@ -364,12 +362,27 @@ void
 msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     struct onvm_nf *nf;
     nf = nf_local_ctx->nf;
+
+    if (buffer_length <= 0) {
+        return;
+    }
+
+    struct onvm_pkt_meta *meta;
+    for (i = 0; i < buffer_length; i++) {
+#ifdef FIX_BUFFER
+        // TODO: (@vivek fix it)
+        Encap(buffer[i]);
+        AttachL2Header(buffer[i], 1); // 1 == Downlink packet
+#endif
+        meta = onvm_get_pkt_meta(buffer[i]);
+        meta = ONVM_NF_ACTION_OUT;
+    }
+
     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
     onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
     printf("Sending out %u packets\n", buffer_length);
     buffer_length = 0;
 }
-
 
 int main(int argc, char *argv[]) {
     int arg_offset;
