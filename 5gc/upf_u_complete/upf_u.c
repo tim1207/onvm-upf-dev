@@ -368,7 +368,7 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     }
 
     struct onvm_pkt_meta *meta;
-    for (i = 0; i < buffer_length; i++) {
+    for (uint32_t i = 0; i < buffer_length; i++) {
 #ifdef FIX_BUFFER
         // TODO: (@vivek fix it)
         Encap(buffer[i]);
