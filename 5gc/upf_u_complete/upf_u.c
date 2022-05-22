@@ -71,11 +71,74 @@
 #define SRC_INTF_SGI_LAN    2
 #define SRC_INTF_CP         3
 #define SRC_INTF_NUM        (SRC_INTF_CP + 1)
+#define FIX_BUFFER
 
 static struct rte_ether_addr dn_eth;
 static struct rte_ether_addr cn_dn_eth;
 static struct rte_ether_addr cn_ue_eth;
 
+uint8_t DnMac[RTE_ETHER_ADDR_LEN];
+uint8_t AnMac[RTE_ETHER_ADDR_LEN];
+
+void parseMAC(){
+    FILE *file;
+
+    char line[256];
+    file = fopen("upf_u.txt" , "r");
+    int linenum=0;
+    int DNvalues[6];
+    int ANvalues[6];
+
+    while(fgets(line, 256, file) != NULL)
+    {
+        linenum++;
+        // printf("Line: %d    String: %s\n", linenum, line);
+
+        if(linenum == 2){
+            /* DN MAC Address */
+            if (sscanf(line, "%x:%x:%x:%x:%x:%x%*c",
+                    &DNvalues[0],
+                    &DNvalues[1],
+                    &DNvalues[2],
+                    &DNvalues[3],
+                    &DNvalues[4],
+                    &DNvalues[5]) == 6)
+            {
+                int i;
+                for( i = 0; i < 6; ++i ){
+                    // printf("%d -> %u\n", DNvalues[i], (uint8_t) DNvalues[i]);
+                    DnMac[i] = (uint8_t) DNvalues[i];
+                    // printf("%u\n", DnMac[i]);
+                }
+            } else {
+                fprintf(stderr, "[Parse MAC] could not parse %s\n", line);
+            }
+        }
+
+        if(linenum == 4){
+            /* AN MAC Address */
+            if (sscanf(line, "%x:%x:%x:%x:%x:%x%*c",
+                    &ANvalues[0],
+                    &ANvalues[1],
+                    &ANvalues[2],
+                    &ANvalues[3],
+                    &ANvalues[4],
+                    &ANvalues[5]) == 6)
+            {
+                int j;
+                for( j = 0; j < 6; ++j ){
+                    // printf("%d -> %u\n", ANvalues[j], (uint8_t) ANvalues[j]);
+                    AnMac[j] = (uint8_t) ANvalues[j];
+                    // printf("%u\n", AnMac[j]);
+                }
+            } else {
+                fprintf(stderr, "[Parse MAC] could not parse %s\n", line);
+            }
+        }
+    }
+
+    fclose(file);
+};
 
 #define MAX_OF_BUFFER_PACKET_SIZE 1600
 struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
@@ -267,12 +330,12 @@ static inline void AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
     //next hop's mac address
     if (is_dl == true) {
         rte_ether_addr_copy(&cn_ue_eth, &eth_hdr->s_addr);
-        eth_hdr->d_addr.addr_bytes[0] = 0x3c;
-        eth_hdr->d_addr.addr_bytes[1] = 0xfd;
-        eth_hdr->d_addr.addr_bytes[2] = 0xfe;
-        eth_hdr->d_addr.addr_bytes[3] = 0x73;
-        eth_hdr->d_addr.addr_bytes[4] = 0x82;
-        eth_hdr->d_addr.addr_bytes[5] = 0xa0;
+        eth_hdr->d_addr.addr_bytes[0] = AnMac[0];
+        eth_hdr->d_addr.addr_bytes[1] = AnMac[1];
+        eth_hdr->d_addr.addr_bytes[2] = AnMac[2];
+        eth_hdr->d_addr.addr_bytes[3] = AnMac[3];
+        eth_hdr->d_addr.addr_bytes[4] = AnMac[4];
+        eth_hdr->d_addr.addr_bytes[5] = AnMac[5];
 
     } else { 
         rte_ether_addr_copy(&cn_dn_eth, &eth_hdr->s_addr);
@@ -368,16 +431,15 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     }
 
     struct onvm_pkt_meta *meta;
-    for (uint32_t i = 0; i < buffer_length; i++) {
-#ifdef FIX_BUFFER
+//#ifdef FIX_BUFFER
+//    for (i = 0; i < buffer_length; i++) {
         // TODO: (@vivek fix it)
-        Encap(buffer[i]);
-        AttachL2Header(buffer[i], 1); // 1 == Downlink packet
-#endif
-        meta = onvm_get_pkt_meta(buffer[i]);
-        meta = ONVM_NF_ACTION_OUT;
-    }
-
+//        Encap(buffer[i]);
+//        AttachL2Header(buffer[i], 1); // 1 == Downlink packet
+//        meta = onvm_get_pkt_meta(buffer[i]);
+//        meta = ONVM_NF_ACTION_OUT;
+//    }
+//#endif
     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
     onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
     printf("Sending out %u packets\n", buffer_length);
@@ -413,14 +475,17 @@ int main(int argc, char *argv[]) {
     ret = rte_eth_macaddr_get(1, &cn_dn_eth);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Cannot get MAC address: err=%d, port=%u\n", ret, 1);
+    
+    // Parse DN & AN MAC address from upf_u.txt
+    parseMAC();
 
     // 8c:dc:d4:ac:6c:7d
-    dn_eth.addr_bytes[0] = 0x8c;
-    dn_eth.addr_bytes[1] = 0xdc;
-    dn_eth.addr_bytes[2] = 0xd4;
-    dn_eth.addr_bytes[3] = 0xac;
-    dn_eth.addr_bytes[4] = 0x6c;
-    dn_eth.addr_bytes[5] = 0x7d;
+    dn_eth.addr_bytes[0] = DnMac[0];
+    dn_eth.addr_bytes[1] = DnMac[1];
+    dn_eth.addr_bytes[2] = DnMac[2];
+    dn_eth.addr_bytes[3] = DnMac[3];
+    dn_eth.addr_bytes[4] = DnMac[4];
+    dn_eth.addr_bytes[5] = DnMac[5];
 
     UpfSessionPoolInit ();
     UeIpToUpfSessionMapInit();

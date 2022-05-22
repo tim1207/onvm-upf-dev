@@ -1,0 +1,4 @@
+# DN MAC Address
+8c:dc:d4:ac:6c:7d
+# AN MAC Address
+3c:fd:fe:73:82:a0
