@@ -72,8 +72,7 @@ LDFLAGS += $(ONVM_HOME)/onvm/pfcp/$(RTE_TARGET)/lib/libpfcp.a
 LDFLAGS += $(ONVM_HOME)/onvm/utlt/$(RTE_TARGET)/lib/libutlt.a -lrt
 LDFLAGS += $(ONVM_HOME)/onvm/logger/liblogger.a -lm
 LDFLAGS += $(ONVM_HOME)/onvm/updk/$(RTE_TARGET)/lib/libupdk.a -lyaml
-# LDFLAGS += $(ONVM_HOME)/5gc/upf_u_complete/libinterface.so
-LDFLAGS += $(ONVM_HOME)/5gc/upf_u_complete/libmycls.so
+LDFLAGS += $(ONVM_HOME)/5gc/upf_u_complete/pdr/libmycls.so
 
 # workaround for a gcc bug with noreturn attribute
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12603

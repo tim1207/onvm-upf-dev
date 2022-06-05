@@ -2,8 +2,8 @@
 extern "C"{
 #endif
 
-    void interface();
-    void createCLS();
+    void interface(char *cls);
+    void createCLS(char *filter_file, char *cls);
 
 #ifdef __cplusplus
 }
