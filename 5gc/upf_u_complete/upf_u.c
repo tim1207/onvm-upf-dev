@@ -62,7 +62,10 @@
 
 #include <time.h>
 
+#define METRIC_REPORT_THRESHOLD 40000000
 char cls[10];
+int metric_cnt;
+uint64_t pdr_search_latency;
 
 void get_monotonic_time(struct timespec* ts) {
     clock_gettime(CLOCK_MONOTONIC, ts);
@@ -149,13 +152,19 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
     UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
 
-    // printf("PDR classifier: %s\n", cls);
-    // get_monotonic_time(&s);
-    interface(cls);
-    // get_monotonic_time(&e);
-    // printf("PDR Lookup Latency: %lu\n", get_elapsed_time_nano(&s, &e));
-    
-    // return NULL;
+    get_monotonic_time(&s);
+    interface(cls); // PDR classifier
+    get_monotonic_time(&e);
+    if (metric_cnt < METRIC_REPORT_THRESHOLD) {
+        pdr_search_latency += get_elapsed_time_nano(&s, &e);
+        metric_cnt++;
+        // printf("PDR Lookup Latency (ns): %lu\n", get_elapsed_time_nano(&s, &e));
+    } else {
+        printf("Ave. PDR Lookup Latency (ns): %lu\n", pdr_search_latency / metric_cnt);
+        pdr_search_latency = 0;
+        metric_cnt = 0;
+    }
+
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL;
     while (node) {
@@ -380,6 +389,8 @@ int main(int argc, char *argv[]) {
     createCLS(argv[10], argv[11]);
     strcpy(cls, argv[11]);
     onvm_nflib_run(nf_local_ctx);
+    metric_cnt = 0;
+    pdr_search_latency = 0;
 
     onvm_nflib_stop(nf_local_ctx);
     printf("If we reach here, program is ending\n");
