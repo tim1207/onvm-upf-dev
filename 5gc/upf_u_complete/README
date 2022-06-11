@@ -3,15 +3,11 @@ PDR lookup experiment:
 The follow steps assume you have installed the requried dependenecis:
 
 1. Go to "5gc/upf_u_complete/pdr", compile the PDR engine:
+cd 5gc/upf_u_complete/pdr
 make libmycls.so
 
-2. Configure the PDR classifier in upf_u.c  The default classifier is PartitionSort.
-    - Search " interface("ps"); " in the upf_u.c
-    - if you want to use PartitionSort, keep it as "ps"
-    - if you want to use TSS, change it to " interface("ptss"); "
-    - if you want to use LL, change it to " interface("ll"); "
-
 3. Compile the UPF-U:
+cd ../
 make
 
 4. Run the UPF-U, please specify the path of the PDR file and the PDR classifier you want to load during initialization
@@ -21,8 +17,11 @@ EXAMPLE:
     ./go.sh 1 /users/sqi009/onvm-upf/5gc/upf_u_complete/pdr/fw_20.rules ps
     # Install 20 PDRs in the UPF-U, Use PartitionSort classifier
 
-    ./go.sh 1 /users/sqi009/onvm-upf/5gc/upf_u_complete/pdr/fw_30.rules ptss
-    # Install 30 PDRs in the UPF-U, Use TSS classifier
+    ./go.sh 1 /users/sqi009/onvm-upf/5gc/upf_u_complete/pdr/fw_30.rules ll
+    # Install 30 PDRs in the UPF-U, Use LL classifier
+
+    ./go.sh 1 /users/sqi009/onvm-upf/5gc/upf_u_complete/pdr/fw_30_tss_best.rules tss
+    # Install 30 PDRs in the UPF-U, Use TSS classifier (Best case)
 
 Note: the PDR files are under 5gc/upf_u_complete/pdr:
     5gc/upf_u_complete/pdr/fw_2.rules
@@ -31,3 +30,6 @@ Note: the PDR files are under 5gc/upf_u_complete/pdr:
     5gc/upf_u_complete/pdr/fw_30.rules
     5gc/upf_u_complete/pdr/fw_40.rules
     5gc/upf_u_complete/pdr/fw_50.rules
+    ....
+
+    fw_XX_tss_worst.rules and fw_XX_tss_best_.rules are used to test TSS_BEST and TSS_WORST
