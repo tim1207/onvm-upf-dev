@@ -28,5 +28,6 @@ public:
     string filterFile;
     PartitionSort ps;
     PriorityTupleSpaceSearch ptss;
+    TupleSpaceSearch tss;
     LinearList ll;
 };

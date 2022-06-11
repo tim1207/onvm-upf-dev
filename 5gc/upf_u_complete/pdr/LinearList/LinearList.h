@@ -7,8 +7,8 @@ class LinearList : public PacketClassifier {
 public:
 	LinearList(){}
 	void ConstructClassifier(const std::vector<Rule>& r) {
-		// rules = r;
-		// rules.reserve(100000);
+		rules = r;
+		rules.reserve(100000);
 		this->rules.reserve(rules.size());
 		for (const auto& r : rules) {
 			InsertRule(r);
@@ -36,17 +36,29 @@ public:
 		int result = -1;
 		auto IsPacketMatchToRule = [](const Packet& p, const Rule& r) {
 			for (int i = 0; i < r.dim; i++) {
-				if (p[i] < r.range[i][0]) return 0;
-				if (p[i] > r.range[i][1]) return 0;
+				if (p[i] < r.range[i][0]) {
+					// printf("p[%d]: %u", i, p[i]);
+					// printf("r.range[%d][0]: ", i);
+					// std::cout << r.range[i][0] << std::endl;
+					return 0;
+				}
+				if (p[i] > r.range[i][1]) {
+					// printf("p[%d]: %u", i, p[i]);
+					// printf("r.range[%d][0]: ", i);
+					// std::cout << r.range[i][0] << std::endl;
+					return 0;
+				}
 			}
 			return 1;
 		};
 		
 		for (size_t j = 0; j < rules.size(); j++) {
+			// std::cout << "11111" << std::endl;
 			if (IsPacketMatchToRule(one_packet, rules[j])) {
 				result = std::max(rules[j].priority, result);
 			}
 		}
+		// std::cout << "LISDhsiladjioasjdoip" << std::endl;
 		return result;
 	}
 

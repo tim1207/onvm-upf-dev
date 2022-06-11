@@ -17,7 +17,13 @@ void createCLS (char *filter_file, char *cls) {
 
 void interface(char *cls) {
     int a = mycls->doPdrSearch(cls);
-    cout << "Lookup Result: " << a << "\t 0: match, -1: miss" <<endl;
+    if (a >= 0) {
+        // cout << "PDR Match" <<endl;
+    } else if (a == -1) {
+        cout << "PDR Miss" <<endl;
+    } else {
+        cout << "PDR Lookup abort(): " << a <<endl;
+    }
 }
 
 #ifdef __cplusplus

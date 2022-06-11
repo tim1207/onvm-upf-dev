@@ -44,6 +44,7 @@ int Tuple::FindMatchPacket(const Packet& p)  {
 	while (found_node != nullptr) {
 		if (found_node->rule_ptr->MatchesPacket(p)) {
 			priority = std::max(priority, found_node->priority);
+			sprintf(out, "%d", priority);
 		}
 		found_node = found_node->next;
 	}
@@ -122,9 +123,16 @@ int TupleSpaceSearch::ClassifyAPacket(const Packet& packet) {
 	int priority = -1;
 	int query = 0;
 	for (auto& tuple : all_tuples) {
+		// printf("Before FindMatchPacket: %d\n", GetNumberOfTuples());
 		auto result = tuple.second.FindMatchPacket(packet);
 		priority = std::max(priority, result);
 		query++;
+	}
+	// printf("QueryUpdate: %d\n", GetNumberOfTuples());
+	if (priority >= 0) {
+		hitCnt++;
+	} else {
+		missCnt++;
 	}
 	QueryUpdate(query);
 	return priority;

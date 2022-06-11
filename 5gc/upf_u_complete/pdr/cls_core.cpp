@@ -16,6 +16,9 @@ void MyClassifier::InitClass(char *filter_file, char *cls) {
     } else if (strcmp(cls, "ll") == 0) {
         ll.ConstructClassifier(rules);
         printf("LinearList classifier is constructed\n");
+    } else if (strcmp(cls, "tss") == 0) {
+        tss.ConstructClassifier(rules);
+        printf("TupleSpaceSearch classifier is constructed\n");
     } else {
         printf("Unknown classifier: %s\n", cls);
         abort();
@@ -33,9 +36,11 @@ int MyClassifier::doPdrSearch(char *cls) {
         return ptss.ClassifyAPacket(p);
     } else if (strcmp(cls, "ll") == 0) {
         return ll.ClassifyAPacket(p);
+    } else if (strcmp(cls, "tss") == 0) {
+        return tss.ClassifyAPacket(p);
     } else {
         printf("Unknown classifier: %s\n", cls);
         abort();
     }
-    return;
+    return -1;
 }

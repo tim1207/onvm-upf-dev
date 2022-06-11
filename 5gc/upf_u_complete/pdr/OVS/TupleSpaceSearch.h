@@ -50,6 +50,7 @@ protected:
 	std::vector<int> dims;
 	std::vector<unsigned int> lengths;
 	std::vector<int> tuple;
+	char out[100];
 };
 
 struct PriorityTuple : public Tuple {
@@ -133,6 +134,9 @@ protected:
 	//maintain rules for monitoring purpose
 	std::vector<Rule> rules;
 	std::vector<int> dims;
+
+	int hitCnt = 0;
+	int missCnt = 0;
 };
 
 class PriorityTupleSpaceSearch : public TupleSpaceSearch {
