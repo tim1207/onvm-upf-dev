@@ -62,6 +62,8 @@
 
 #include <time.h>
 
+char cls[10];
+
 void get_monotonic_time(struct timespec* ts) {
     clock_gettime(CLOCK_MONOTONIC, ts);
 }
@@ -147,11 +149,13 @@ UPDK_PDR *GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
     UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
 
-    get_monotonic_time(&s);
-    interface("ps");
-    get_monotonic_time(&e);
-    printf("PDR Lookup Latency: %lu\n", get_elapsed_time_nano(&s, &e));
+    // printf("PDR classifier: %s\n", cls);
+    // get_monotonic_time(&s);
+    interface(cls);
+    // get_monotonic_time(&e);
+    // printf("PDR Lookup Latency: %lu\n", get_elapsed_time_nano(&s, &e));
     
+    // return NULL;
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL;
     while (node) {
@@ -281,14 +285,10 @@ static int packet_handler(struct rte_mbuf *pkt,
         if (udp_header == NULL) {
             return 0;
         }
-        // invariant(dst_port == GTPV1_PORT);
-        // extract TEID from
         // Step 2: Get PDR rule
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
-        // get_monotonic_time(&s);
+
         pdr = GetPdrByTeid(pkt, teid);
-        // get_monotonic_time(&e);
-        // printf("PDR Lookup Latency: %lu\n", get_elapsed_time_nano(&s, &e));
     } else {
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
@@ -378,6 +378,7 @@ int main(int argc, char *argv[]) {
     UeIpToUpfSessionMapInit();
     TeidToUpfSessionMapInit();
     createCLS(argv[10], argv[11]);
+    strcpy(cls, argv[11]);
     onvm_nflib_run(nf_local_ctx);
 
     onvm_nflib_stop(nf_local_ctx);
