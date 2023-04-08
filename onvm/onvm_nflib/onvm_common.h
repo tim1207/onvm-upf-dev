@@ -68,7 +68,7 @@
 #define MAX_NFS_PER_SERVICE 32   // max number of NFs per service.
 
 #define NUM_MBUFS 32767          // total number of mbufs (2^15 - 1)
-#define NF_QUEUE_RINGSIZE 16384  // size of queue for NFs
+#define NF_QUEUE_RINGSIZE 65536  // size of queue for NFs
 
 #define PACKET_READ_SIZE ((uint16_t)32)
 
@@ -317,8 +317,8 @@ struct onvm_nf {
         } stats;
 
         struct {
-                 /* 
-                  * Sleep state (shared mem variable) to track state of NF and trigger wakeups 
+                 /*
+                  * Sleep state (shared mem variable) to track state of NF and trigger wakeups
                   *     sleep_state = 1 => NF sleeping (waiting on semaphore)
                   *     sleep_state = 0 => NF running (not waiting on semaphore)
                   */
@@ -366,7 +366,7 @@ struct lpm_request {
         int status;
 };
 
-/* 
+/*
  * Structure used to initiate a flow tables hash_table from a secondary process, it is enqueued onto the managers message ring
  */
 struct ft_request {

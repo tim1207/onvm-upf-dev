@@ -541,7 +541,7 @@ onvm_nflib_start_nf(struct onvm_nf_local_ctx *nf_local_ctx, struct onvm_nf_init_
                 RTE_LOG(INFO, APP, "Packet limit (rx) set to %u\n", nf->flags.pkt_limit);
 
         /*
-         * Allow this for cases when there is not enough cores and using 
+         * Allow this for cases when there is not enough cores and using
          * the shared core mode is not an option
          */
         if (ONVM_CHECK_BIT(nf->flags.init_options, SHARE_CORE_BIT) && !ONVM_NF_SHARE_CORES)
@@ -591,6 +591,8 @@ onvm_nflib_thread_main_loop(void *arg) {
                 nf->function_table->setup(nf_local_ctx);
 
         start_time = rte_get_tsc_cycles();
+        uint64_t last_time_get_pkt = rte_get_tsc_cycles();
+        int init_timeout = 0;
         for (;rte_atomic16_read(&nf_local_ctx->keep_running) && rte_atomic16_read(&main_nf_local_ctx->keep_running);) {
                 /* Possibly sleep if in shared core mode, otherwise continue */
                 if (ONVM_NF_SHARE_CORES) {
@@ -605,6 +607,14 @@ onvm_nflib_thread_main_loop(void *arg) {
 
                 if (likely(nb_pkts_added > 0)) {
                         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, pkts, nb_pkts_added, nf);
+                        init_timeout = 1;
+                        last_time_get_pkt = rte_get_tsc_cycles();
+                }else if(nb_pkts_added == 0){
+                        if (init_timeout && unlikely((rte_get_tsc_cycles() - last_time_get_pkt) * TIME_TTL_MULTIPLIER * 1000000000 / rte_get_timer_hz() >= 20000))
+                        {
+                                // printf("Force to trigger timeout\n");
+                                (*nf->function_table->pkt_handler)(NULL, NULL, nf_local_ctx);
+                        }
                 }
 
                 /* Flush the packet buffers */
