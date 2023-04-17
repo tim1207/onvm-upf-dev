@@ -47,6 +47,10 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
 int packet_handler(
     struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
     __attribute__((unused)) struct onvm_nf_local_ctx *nf_local_ctx) {
+    if (pkt == NULL && meta == NULL){
+        return 0;
+    }
+
     meta->action = ONVM_NF_ACTION_DROP;
 
     PfcpHeader *pfcpHeader = NULL;
@@ -66,11 +70,15 @@ int packet_handler(
         pfcpOut->sqn_only = pfcpHeader->sqn_only;
         // TODO(vivek): Send to back to SMF
         // SockSendTo(sock, vFail, 8);
+        printf("Unsupported PFCP version: %d", pfcpHeader->version);
         return 0;
     }
 
     struct rte_ipv4_hdr * iph;
     iph = (struct rte_ipv4_hdr *) rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr *, sizeof(struct rte_ether_hdr));
+    
+    // struct rte_udp_hdr *udp_h = (struct rte_udp_hdr *)rte_pktmbuf_mtod(pkt, uint8_t *) + sizeof(struct rte_ether_hdr) + sizeof(struct rte_ipv4_hdr);
+    // printf("Src: (%d:%d)\tDst: (%d:%d)\n", iph->src_addr, udp_h->src_port, iph->dst_addr, udp_h->dst_port);
 
     SockAddr from;
     memset(&from, 0, sizeof(from));
@@ -111,7 +119,7 @@ int packet_handler(
             upf->sock = Self()->pfcpSock;
         }
         upf->sock = Self()->pfcpSock;
-	memcpy(&(upf->sock->remoteAddr), &from, sizeof(from));
+	    memcpy(&(upf->sock->remoteAddr), &from, sizeof(from));
     }
 
     Event event;

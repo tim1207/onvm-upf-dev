@@ -118,8 +118,8 @@ Status PfcpSend(PfcpNode *node, Bufblk *bufBlk) {
     // Prepending UDP Header
     udphdr = (struct rte_udp_hdr *)rte_pktmbuf_prepend(
             pkt, sizeof(struct rte_udp_hdr));
-    udphdr->src_port = sock->localAddr._port;
-    udphdr->dst_port = sock->remoteAddr._port;
+    udphdr->src_port = GetPort(&sock->localAddr);
+    udphdr->dst_port = GetPort(&sock->remoteAddr);
     udphdr->dgram_len = rte_cpu_to_be_16(bufferLength + sizeof(struct rte_udp_hdr));
 
     // Prepending IPv4 Header
@@ -149,7 +149,7 @@ Status PfcpSend(PfcpNode *node, Bufblk *bufBlk) {
 
     // Fill out the meta data of the packet
     pmeta = onvm_get_pkt_meta(pkt);
-    pmeta->destination = 3; // serviceId;
+    pmeta->destination = 3; // serviceId; // TODO: This is hardcode
     pmeta->action = ONVM_NF_ACTION_TONF;
     pkt->pkt_len = bufferLength + sizeof(struct rte_ether_hdr) + 20 + sizeof(struct rte_udp_hdr);  //???
     pkt->data_len = bufferLength + sizeof(struct rte_ether_hdr) + 20 + sizeof(struct rte_udp_hdr);  //???
@@ -160,6 +160,9 @@ Status PfcpSend(PfcpNode *node, Bufblk *bufBlk) {
     if (s < 0) {
         return STATUS_ERROR;
     }
+
+    UTLT_Trace("[PfcpSend]: Src: (%d:%d)\tDst: (%d:%d)\tService ID: %d\n",
+        ipv4Hdr->src_addr, udphdr->src_port, ipv4Hdr->dst_addr, udphdr->dst_port, pmeta->destination);
 
     return STATUS_OK;
 #else
