@@ -345,6 +345,7 @@ UpfSession *UpfGetSessionByIndex(int32_t idx) {
 }
 
 UpfSession *UpfSessionFindBySeid(uint64_t seid) {
+    UTLT_Debug("UpfSessionFindBySeid: seid=%d", seid);
     uint32_t cal_hash = SEID_TO_HASH_KEY(seid);
     int32_t status = rte_hash_lookup_with_hash(upf_session_table->hash,
                                                (const void *)&seid, cal_hash);

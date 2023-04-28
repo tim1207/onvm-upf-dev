@@ -247,8 +247,14 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
 
     //put upfqer in upfpdr
     if (upfPdr->flags.qerId) {
-        upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
-        UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        if (session->upfSeid == 1) {
+            upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
+            UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        } else {
+            UpfSession *s1 = UpfSessionFindBySeid(1);
+            upfPdr->qer = UpfQERFindByID(s1, upfPdr->qerId);
+            UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        }
     }
 
     // Register PDR to Session
