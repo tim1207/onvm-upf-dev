@@ -1089,8 +1089,6 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     } else {
         // TODO: This is hardcode
         if (session->upfSeid > 1) {
-            UTLT_Warning("Create QER seid=%d", session->upfSeid);
-
             UpfSession *s1 = UpfSessionFindBySeid(1);  // Get first creates session
             UpfQER *upfQer = UpfQERFindByID(s1, 1);    // Always search QERID=1
 

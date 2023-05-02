@@ -118,8 +118,13 @@ Status PfcpSend(PfcpNode *node, Bufblk *bufBlk) {
     // Prepending UDP Header
     udphdr = (struct rte_udp_hdr *)rte_pktmbuf_prepend(
             pkt, sizeof(struct rte_udp_hdr));
+    /* Use by l25gc */
+    // udphdr->src_port = sock->localAddr._port;
+    // udphdr->dst_port = sock->remoteAddr._port;
+    /* Used by XIO-free5GC */
     udphdr->src_port = GetPort(&sock->localAddr);
     udphdr->dst_port = GetPort(&sock->remoteAddr);
+
     udphdr->dgram_len = rte_cpu_to_be_16(bufferLength + sizeof(struct rte_udp_hdr));
 
     // Prepending IPv4 Header

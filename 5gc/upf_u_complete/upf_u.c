@@ -312,6 +312,7 @@ static int HandlePacketWithFar(struct rte_mbuf *pkt, UPDK_FAR *far, UPDK_QER *qe
             msg->seid = seid;
             msg->pdrId = pdrId;
             */
+            UTLT_Debug("Send to upf-c, namely service id is 2\n");
             onvm_nflib_send_msg_to_nf(2, msg);
         }
         if (far->applyAction & UPDK_FAR_APPLY_ACTION_DUPL) {
@@ -348,17 +349,25 @@ static inline void AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
 static int packet_handler(struct rte_mbuf *pkt,
                           struct onvm_pkt_meta *meta,
                           struct onvm_nf_local_ctx *nf_local_ctx) {
+
+    if (pkt == NULL || meta == NULL) {
+        return 0;
+    }
+    UTLT_Trace("Get packet\n");
+
     bool is_dl = false;
     meta->action = ONVM_NF_ACTION_DROP;
     struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
 
     if (iph == NULL) {
+        UTLT_Error("Not IP packet, ignore it\n");
         return 0;
     }
 
     UPDK_PDR *pdr = NULL;
     // Step 1: Identify if it is a uplink packet or downlink packet
     if (iph->dst_addr == SELF_IP) {  //
+        UTLT_Trace("It is uplink\n");
         struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
         if (udp_header == NULL) {
             return 0;
@@ -369,22 +378,24 @@ static int packet_handler(struct rte_mbuf *pkt,
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
         pdr = GetPdrByTeid(pkt, teid);
     } else {
+        UTLT_Trace("It is downlink\n");
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
         is_dl = true;
     }
 
     if (!pdr) {
-        printf("no PDR found for %pI4, skip\n", &iph->dst_addr);
+        UTLT_Error("no PDR found for %pI4, skip\n", &iph->dst_addr);
         // TODO(vivek): what to do?
         return 0;
     }
+    UTLT_Trace("Got PDR ID is %u\n", pdr->pdrId);
     rte_pktmbuf_adj(pkt, sizeof(struct rte_ether_hdr));
 
     UPDK_FAR *far;
     far = pdr->far;
     if (!far) {
-        printf("There is no FAR related to PDR[%u]\n", pdr->pdrId);
+        UTLT_Error("There is no FAR related to PDR[%u]\n", pdr->pdrId);
         meta->action = ONVM_NF_ACTION_DROP;
         return 0;
     }
@@ -417,6 +428,13 @@ static int packet_handler(struct rte_mbuf *pkt,
 
     int status = 0;
     status = HandlePacketWithFar(pkt, far, pdr->qer, meta);
+    if (meta->action == ONVM_NF_ACTION_DROP) {
+        UTLT_Trace("Action is drop\n");
+    } else if (meta->action == ONVM_NF_ACTION_OUT) {
+        UTLT_Trace("Action is out\n");
+    } else {
+        UTLT_Trace("Action is unknown\n");
+    }
     AttachL2Header(pkt, is_dl);
     return status;
 }
