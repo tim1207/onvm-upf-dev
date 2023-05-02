@@ -247,14 +247,16 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
 
     //put upfqer in upfpdr
     if (upfPdr->flags.qerId) {
-        if (session->upfSeid == 1) {
-            upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
-            UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
-        } else {
-            UpfSession *s1 = UpfSessionFindBySeid(1);
-            upfPdr->qer = UpfQERFindByID(s1, upfPdr->qerId);
-            UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
-        }
+        // if (session->upfSeid == 1) {
+        //     upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
+        //     UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        // } else {
+        //     UpfSession *s1 = UpfSessionFindBySeid(1);
+        //     upfPdr->qer = UpfQERFindByID(s1, upfPdr->qerId);
+        //     UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        // }
+        upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
+        UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
     }
 
     // Register PDR to Session
@@ -1084,6 +1086,16 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
         status = UpfN4HandleCreateQer(session, &request->createQER);
         UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create QER error");
+    } else {
+        // TODO: This is hardcode
+        if (session->upfSeid > 1) {
+            UTLT_Warning("Create QER seid=%d", session->upfSeid);
+
+            UpfSession *s1 = UpfSessionFindBySeid(1);  // Get first creates session
+            UpfQER *upfQer = UpfQERFindByID(s1, 1);    // Always search QERID=1
+
+            UTLT_Assert(UpfQERRegisterToSession(session, upfQer), return STATUS_ERROR, "UpfQERRegisterToSession failed, seid=%d", session->upfSeid);
+        }
     }
 
     // The order of PDF should be the lastest
