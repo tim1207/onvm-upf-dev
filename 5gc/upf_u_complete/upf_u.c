@@ -460,7 +460,7 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
 //#endif
     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
     onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
-    printf("Sending out %u packets\n", buffer_length);
+    UTLT_Debug("Sending out %u packets\n", buffer_length);
     buffer_length = 0;
 }
 

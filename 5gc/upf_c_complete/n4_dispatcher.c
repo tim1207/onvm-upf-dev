@@ -24,7 +24,7 @@ void UpfDispatcher(const Event *event) {
 
             //to check if srr has been sent
             if(session->srr_flag == true){
-                UTLT_Info("PFCP SRR outstanding\n");
+                UTLT_Info("PFCP Session Report Request has been sent\n");
                 return;
             }
 
@@ -41,7 +41,7 @@ void UpfDispatcher(const Event *event) {
             UTLT_Assert(status == STATUS_OK, return,
                         "Build Session Report Request error");
             
-            UTLT_Warning("[NCTU] Send SRR");
+            UTLT_Warning("Send Session Report Request");
             xact = PfcpXactLocalCreate(session->pfcpNode, &header, bufBlk);
             UTLT_Assert(xact, return, "pfcpXactLocalCreate error");
 
