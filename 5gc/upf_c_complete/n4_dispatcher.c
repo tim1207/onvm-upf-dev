@@ -6,6 +6,7 @@
 #include "pfcp_xact.h"
 #include "pfcp_path.h"
 #include "n4_onvm_pfcp_build.h"
+#include "upf_context.h"
 
 void UpfDispatcher(const Event *event) {
     switch ((UpfEvent)event->type) {
@@ -126,9 +127,11 @@ void UpfDispatcher(const Event *event) {
                                                      &pfcpMessage->pFCPAssociationReleaseRequest);
                 break;
             case PFCP_SESSION_ESTABLISHMENT_REQUEST:
+                // DumpUpfSession();
                 UTLT_Info("[PFCP] Handle PFCP session establishment request");
                 UpfN4HandleSessionEstablishmentRequest(session, xact,
                                                        &pfcpMessage->pFCPSessionEstablishmentRequest);
+                // DumpUpfSession();
                 break;
             case PFCP_SESSION_MODIFICATION_REQUEST:
                 UTLT_Info("[PFCP] Handle PFCP session modification request");

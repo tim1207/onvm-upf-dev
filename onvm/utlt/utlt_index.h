@@ -49,7 +49,7 @@
         memset((__assignedPtr), 0, sizeof(*((__nameptr)->queueAvail[(__nameptr)->qFront]))); \
         (__assignedPtr)->index = (__nameptr)->arrayForIndex[(__nameptr)->qFront]; \
         (__nameptr)->qFront = ((__nameptr)->qFront + 1) % ((__nameptr)->qCap + 1); \
-        UTLT_Debug("Index alloc successful, total capacity[%d], available[%d]" \
+        UTLT_Trace("Index alloc successful, total capacity[%d], available[%d]" \
         , IndexCap(__nameptr), IndexSize(__nameptr)); \
     } else { \
         (__assignedPtr) = NULL; \
@@ -65,7 +65,7 @@
         (__nameptr)->queueAvail[(__nameptr)->qEnd] = (__assignedPtr); \
         (__nameptr)->arrayForIndex[(__nameptr)->qEnd] = (__assignedPtr)->index; \
         (__nameptr)->qEnd = ((__nameptr)->qEnd + 1) % ((__nameptr)->qCap + 1); \
-        UTLT_Debug("Index Free successful, total capacity[%d], available[%d]" \
+        UTLT_Trace("Index Free successful, total capacity[%d], available[%d]" \
         , IndexCap(__nameptr), IndexSize(__nameptr)); \
     } else { \
         UTLT_Error("Index Pool is full, it may not belong to this pool"); \

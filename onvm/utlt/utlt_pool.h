@@ -35,7 +35,7 @@
     if (PoolSize(__nameptr) > 0) { \
         (__assignedPtr) = (__nameptr)->queueAvail[(__nameptr)->qFront]; \
         (__nameptr)->qFront = ((__nameptr)->qFront + 1) % ((__nameptr)->qCap + 1); \
-        UTLT_Debug("Pool alloc successful, total capacity[%d], available[%d]" \
+        UTLT_Trace("Pool alloc successful, total capacity[%d], available[%d]" \
         , PoolCap(__nameptr), PoolSize(__nameptr)); \
     } else { \
         (__assignedPtr) = NULL; \
@@ -50,7 +50,7 @@
     if (PoolSize(__nameptr) < (__nameptr)->qCap) { \
         (__nameptr)->queueAvail[(__nameptr)->qEnd] = (__assignedPtr); \
         (__nameptr)->qEnd = ((__nameptr)->qEnd + 1) % ((__nameptr)->qCap + 1); \
-        UTLT_Debug("Pool Free successful, total capacity[%d], available[%d]" \
+        UTLT_Trace("Pool Free successful, total capacity[%d], available[%d]" \
         , PoolCap(__nameptr), PoolSize(__nameptr)); \
     } else { \
         UTLT_Error("Pool is full, it may not belong to this pool"); \

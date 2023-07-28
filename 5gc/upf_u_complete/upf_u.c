@@ -51,6 +51,7 @@
 #include <string.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "gtp.h"
 #include "upf_context.h"
@@ -378,14 +379,17 @@ static int packet_handler(struct rte_mbuf *pkt,
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
         pdr = GetPdrByTeid(pkt, teid);
     } else {
-        UTLT_Trace("It is downlink\n");
+        UTLT_Trace("It is downlink, dst is %d\n", rte_cpu_to_be_32(iph->dst_addr));
+        struct timespec ts;
+        timespec_get(&ts, TIME_UTC);
+        UTLT_Error("(%d) Time: %ld.%09ld\n", rte_cpu_to_be_32(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
         // Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
         is_dl = true;
     }
 
     if (!pdr) {
-        UTLT_Error("no PDR found for %pI4, skip\n", &iph->dst_addr);
+        UTLT_Error("no PDR found for %d, skip\n", rte_cpu_to_be_32(iph->dst_addr));
         // TODO(vivek): what to do?
         return 0;
     }
@@ -468,6 +472,7 @@ int main(int argc, char *argv[]) {
     int arg_offset;
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
+    // UTLT_SetLogLevel("trace");
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);

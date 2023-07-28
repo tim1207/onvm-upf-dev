@@ -150,6 +150,7 @@ Status UpfContextTerminate();
 int UpfSessionPoolInit(void);
 int UeIpToUpfSessionMapInit(void);
 int TeidToUpfSessionMapInit(void);
+void DumpUpfSession();
 
 // Create Session APIs
 UpfSession *UpfSessionAlloc(uint64_t seid);

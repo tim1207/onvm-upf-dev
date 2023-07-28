@@ -240,6 +240,7 @@ UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
     UpfSession *session = NULL;
 
     session = UpfSessionAlloc(g_sessionIdPool);
+    // UTLT_Debug("Session return from UpfSessionAlloc: %p\n", session);
     UTLT_Assert(session, return NULL, "session alloc error");
 
     strncpy((char*)session->pdn.dnn, (char*)dnn, MAX_DNN_LEN + 1);
@@ -247,6 +248,7 @@ UpfSession *UpfSessionAdd(PfcpUeIpAddr *ueIp,
     session->pdr_list = list_new();
     session->far_list = list_new();
     session->qer_list = list_new();
+    // DumpUpfSession();
     //use to check srr flag
     session->srr_flag = false;
 
@@ -285,6 +287,7 @@ Status UpfSessionRemove(UpfSession *session) {
 }
 
 UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
+    UTLT_Debug("UpfSessionAddByMessage"); 
     UpfSession *session;
 
     PFCPSessionEstablishmentRequest *request =
@@ -336,7 +339,9 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
     UTLT_Assert(session, return NULL, "session add error");
 
     session->smfSeid = *(uint64_t*)request->cPFSEID.value;
-    UTLT_Trace("UPF Establishment UPF SEID: %lu", session->upfSeid);
+    // DumpUpfSession();
+    UTLT_Debug("UPF Establishment UPF SEID: %lu", session->upfSeid);
+    UTLT_Debug("UPF Establishment SMF SEID: %lu", session->smfSeid);
 
     return session;
 }

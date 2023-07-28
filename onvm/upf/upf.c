@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <list.h>
 
 #include <rte_cycles.h>
 #include <rte_hash.h>
@@ -356,6 +357,8 @@ UpfSession *UpfSessionFindBySeid(uint64_t seid) {
 }
 
 UpfSession *UpfSessionAlloc(const uint64_t seid) {
+    // UTLT_Debug("UpfSessionAlloc: seid=%d", seid);
+
     uint32_t cal_hash = SEID_TO_HASH_KEY(seid);
     int32_t status = rte_hash_add_key_with_hash(upf_session_table->hash,
                                                 (const void *) &seid,
@@ -368,10 +371,15 @@ UpfSession *UpfSessionAlloc(const uint64_t seid) {
     session->index = status;
     session->hashKey = cal_hash;
     session->upfSeid = seid;
+    // UTLT_Debug("UpfSessionAlloc: dump");
+    // DumpUpfSession();
+    // UTLT_Debug("UpfSessionAlloc: dump done");
     return session;
 }
 
 UpfSession *UpfSessionFindByUeIP(uint32_t ue_ip) {
+    // UTLT_Debug("UpfSessionFindByUeIP");
+    // DumpUpfSession();
     uint32_t cal_hash = UEIP_TO_HASH_KEY(ue_ip);
     int32_t status = rte_hash_lookup_with_hash(ueip_upf_session_map->hash,
                                                (const void *)&ue_ip,
@@ -380,8 +388,7 @@ UpfSession *UpfSessionFindByUeIP(uint32_t ue_ip) {
         UTLT_Info("Not Found UpfSessionFindByUeIP[%u]", ue_ip);
         return NULL;
     }
-    int idx = status * ueip_upf_session_map->entry_size;
-    return UpfGetSessionByIndex(idx);
+    return UpfGetSessionByIndex(status);
 }
 
 Status InsertUEIPtoSessionMap(const uint32_t ue_ip, UpfSession *session) {
@@ -409,8 +416,7 @@ UpfSession *UpfSessionFindByTeid(uint32_t teid) {
         UTLT_Info("Not Found InsertTEIDtoSessionMap[%u]", teid);
         return NULL;
     }
-    int idx = status * teid_upf_session_map->entry_size;
-    return UpfGetSessionByIndex(idx);
+    return UpfGetSessionByIndex(status);
 }
 
 Status InsertTEIDtoSessionMap(const uint32_t teid, UpfSession *session) {
@@ -446,4 +452,68 @@ void TeidToUpfSessionMapFree(const uint32_t teid) {
     if (status < 0) {
         UTLT_Error("Error deleting a TeidToUpfSessionMapFree");
     }
+}
+
+void DumpUpfSession() {
+    const void *next_key;
+    void *next_data;
+    uint32_t iter = 0;
+    UpfSession *session;
+
+    printf("[DumpUpfSession]:\n");
+    while (rte_hash_iterate(ueip_upf_session_map->hash, &next_key, &next_data, &iter) >= 0){
+        uint32_t *key = (uint32_t *) next_key;
+        int32_t *index = (int32_t *) next_data;
+        session = UpfGetSessionByIndex(*index);
+
+        printf("Key (UE_IP):\n");
+        printf("\t%d\n", *key);
+        printf("Value:\n");
+        printf("\tIndex: %d\n", *index);
+        printf("\tSession: %p\tSize: %ld (0x%lx)\n", session, sizeof(UpfSession), sizeof(UpfSession));
+        printf("\tTEID: %d\n", session->teid);
+        printf("\tupfSeid: %ld\n", session->upfSeid);
+        printf("\tsmfSeid: %ld\n", session->smfSeid);
+
+        list_node_t *node;
+        list_iterator_t *it;
+
+        if (session->pdr_list != NULL) {
+            printf("\tPDR List: %p\n", session->pdr_list);
+            it = list_iterator_new(session->pdr_list, LIST_HEAD);
+            while ((node = list_iterator_next(it))) {
+                UpfPDR *pdr = (UpfPDR *) node->val;
+                printf("\tPDR ID: %d\n", pdr->pdrId);
+            }
+            list_iterator_destroy(it);
+        } else {
+            printf("\tPDR List is NULL\n");
+        }
+
+        if (session->far_list != NULL) {
+            printf("\tFAR List: %p\n", session->far_list);
+            it = list_iterator_new(session->far_list, LIST_HEAD);
+            while ((node = list_iterator_next(it))) {
+                UpfFAR *far = (UpfFAR *) node->val;
+                printf("\tFAR ID: %d\n", far->farId);
+            }
+            list_iterator_destroy(it);
+        } else {
+            printf("\tFAR List is NULL\n");
+        }
+
+        if (session->qer_list != NULL) {
+            printf("\tQER List: %p\n", session->qer_list);
+            it = list_iterator_new(session->qer_list, LIST_HEAD);
+            while ((node = list_iterator_next(it))) {
+                UpfQER *qer = (UpfQER *) node->val;
+                printf("\tQER ID: %d\n", qer->qerId);
+            }
+            list_iterator_destroy(it);
+        } else {
+            printf("\tQER List is NULL\n");
+        }
+
+    }
+    printf("\n");
 }
