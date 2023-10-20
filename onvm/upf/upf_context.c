@@ -292,7 +292,7 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
 
     PFCPSessionEstablishmentRequest *request =
       &message->pFCPSessionEstablishmentRequest;
-
+    printf("PDN Type(%d)\n",((int8_t *)request->pDNType.value)[0]);
     if (!request->nodeID.presence) {
         UTLT_Error("no NodeID");
         return NULL;
@@ -305,10 +305,12 @@ UpfSession *UpfSessionAddByMessage(PfcpMessage *message) {
         UTLT_Error("No PDR");
         return NULL;
     }
+    
     if (!request->createFAR[0].presence) {
         UTLT_Error("No FAR");
         return NULL;
     }
+    
     if (!request->pDNType.presence) {
         UTLT_Error("No PDN Type");
         return NULL;

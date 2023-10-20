@@ -1081,11 +1081,14 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     if (request->createBAR.presence) {
         // TODO
     }
-    if (request->createQER.presence) {
+    if (request->createQER[0].presence) {
         // TODO
-        status = UpfN4HandleCreateQer(session, &request->createQER);
-        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
+        for(int i=0;i<2;i++){
+            status = UpfN4HandleCreateQer(session, &request->createQER[i]);
+            UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create QER error");
+        }
+        
     } else {
         // TODO: This is hardcode
         if (session->upfSeid > 1) {

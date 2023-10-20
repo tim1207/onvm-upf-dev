@@ -969,7 +969,7 @@ typedef struct _PFCPSessionEstablishmentRequest {
     CreatePDR createPDR[2];
     CreateFAR createFAR[2];
     CreateURR createURR;
-    CreateQER createQER;
+    CreateQER createQER[2];
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
     PDNType pDNType;
