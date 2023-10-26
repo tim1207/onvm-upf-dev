@@ -966,10 +966,10 @@ typedef struct _PFCPSessionEstablishmentRequest {
     unsigned long presence;
     NodeID nodeID;
     FSEID cPFSEID;
-    CreatePDR createPDR[2];
-    CreateFAR createFAR[2];
+    CreatePDR createPDR[4];
+    CreateFAR createFAR[4];
     CreateURR createURR;
-    CreateQER createQER[2];
+    CreateQER createQER[4];
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
     PDNType pDNType;
