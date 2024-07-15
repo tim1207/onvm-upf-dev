@@ -1,4 +1,6 @@
 # DN MAC Address
-8c:dc:d4:ac:6c:7d
+3c:fd:fe:b4:fd:6d
 # AN MAC Address
-3c:fd:fe:73:82:a0
+3c:fd:fe:b0:ef:f4
+# UPF ID Address
+10.10.1.2
