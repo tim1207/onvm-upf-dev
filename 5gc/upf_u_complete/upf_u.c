@@ -83,6 +83,21 @@ uint8_t DnMac[RTE_ETHER_ADDR_LEN];
 uint8_t AnMac[RTE_ETHER_ADDR_LEN];
 int SELF_IP;
 
+char *
+convertToIpAddress(uint32_t big_endian_value) {
+        static char ip_string[16];
+
+        uint8_t ip_address[4];
+        ip_address[0] = (big_endian_value >> 24) & 0xFF;
+        ip_address[1] = (big_endian_value >> 16) & 0xFF;
+        ip_address[2] = (big_endian_value >> 8) & 0xFF;
+        ip_address[3] = big_endian_value & 0xFF;
+
+        sprintf(ip_string, "%d.%d.%d.%d", ip_address[3], ip_address[2], ip_address[1], ip_address[0]);
+
+        return ip_string;
+}
+
 int
 parseIpv4Address(const char *addrStr) {
         const char *p = addrStr;
@@ -390,6 +405,11 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
 
         UPDK_PDR *pdr = NULL;
         // Step 1: Identify if it is a uplink packet or downlink packet
+        char *src_address = convertToIpAddress(iph->src_addr);
+        UTLT_Info("Src IP is %s\n", src_address);
+        char *dst_address = convertToIpAddress(iph->dst_addr);
+        UTLT_Info("Dst IP is %s\n", dst_address);
+
         if (iph->dst_addr == SELF_IP) {  //
                 UTLT_Info("It is uplink\n");
                 struct rte_udp_hdr *udp_header = onvm_pkt_udp_hdr(pkt);
@@ -402,11 +422,13 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
                 pdr = GetPdrByTeid(pkt, teid);
         } else {
-                UTLT_Info("It is downlink, dst is %d\n", rte_cpu_to_be_32(iph->dst_addr));
+                // UTLT_Info("It is downlink, dst is %d\n", rte_cpu_to_be_32(iph->dst_addr));
+                UTLT_Info("It is downlink, dst is %s\n", convertToIpAddress(iph->dst_addr));
                 struct timespec ts;
                 timespec_get(&ts, TIME_UTC);
-                UTLT_Info("(%d) Time: %ld.%09ld\n", rte_cpu_to_be_32(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
-                // Step 2: Get PDR rule
+                // UTLT_Info("(%d) Time: %ld.%09ld\n", rte_cpu_to_be_32(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
+                UTLT_Info("(%d) Time: %ld.%09ld\n", convertToIpAddress(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
+                //  Step 2: Get PDR rule
                 pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
                 is_dl = true;
         }
