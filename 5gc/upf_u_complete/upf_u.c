@@ -421,24 +421,27 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 // Step 2: Get PDR rule
                 uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
                 pdr = GetPdrByTeid(pkt, teid);
+
         } else {
                 // UTLT_Info("It is downlink, dst is %d\n", rte_cpu_to_be_32(iph->dst_addr));
                 UTLT_Info("It is downlink, dst is %s\n", convertToIpAddress(iph->dst_addr));
+
                 struct timespec ts;
                 timespec_get(&ts, TIME_UTC);
                 // UTLT_Info("(%d) Time: %ld.%09ld\n", rte_cpu_to_be_32(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
-                UTLT_Info("(%d) Time: %ld.%09ld\n", convertToIpAddress(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
+                UTLT_Info("(%s) Time: %ld.%09ld\n", convertToIpAddress(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
                 //  Step 2: Get PDR rule
                 pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
                 is_dl = true;
         }
 
         if (!pdr) {
-                UTLT_Error("no PDR found for %d, skip\n", rte_cpu_to_be_32(iph->dst_addr));
+                // UTLT_Error("no PDR found for %d, skip\n", rte_cpu_to_be_32(iph->dst_addr));
+                UTLT_Error("no PDR found for %s, skip\n", convertToIpAddress(iph->dst_addr));
                 // TODO(vivek): what to do?
                 return 0;
         }
-        UTLT_Trace("Got PDR ID is %u\n", pdr->pdrId);
+        UTLT_Info("Got PDR ID is %u\n", pdr->pdrId);
         rte_pktmbuf_adj(pkt, sizeof(struct rte_ether_hdr));
 
         UPDK_FAR *far;
@@ -477,9 +480,9 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         int status = 0;
         status = HandlePacketWithFar(pkt, far, pdr->qer, meta);
         if (meta->action == ONVM_NF_ACTION_DROP) {
-                UTLT_Trace("Action is drop\n");
+                UTLT_Info("Action is drop\n");
         } else if (meta->action == ONVM_NF_ACTION_OUT) {
-                UTLT_Trace("Action is out\n");
+                UTLT_Info("Action is out\n");
         } else {
                 UTLT_Trace("Action is unknown\n");
         }
