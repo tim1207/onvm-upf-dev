@@ -113,8 +113,6 @@ parseIpv4Address(const char *addrStr) {
         if (*endp != '.')
                 return -1;
         unsigned long d = strtoul(p = endp + 1, &endp, 10);
-        if (*endp)
-                return -1;
 
         SELF_IP = (uint32_t)((d << 24) | (c << 16) | (b << 8) | a);
         UTLT_Info("IP Address: %s -> %d\n", addrStr, SELF_IP);
