@@ -501,7 +501,7 @@ Status UpfN4HandleCreateQer(UpfSession *session, CreateQER *createQer) {
         return STATUS_ERROR, "Convert Create QER TLV To Rule is failed");
     
     // Register QER to Session
-    //need to implement this function
+    // need to implement this function
     UTLT_Assert(UpfQERRegisterToSession(session, upfQer),
         return STATUS_ERROR, "UpfQERRegisterToSession failed");
 
@@ -1061,18 +1061,13 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     //UTLT_Assert(pfcpXact->gtpXact, return,
     // "GTP Xact of pfcpXact error");
 
-    if (request->createFAR[0].presence) {
-        status = UpfN4HandleCreateFar(session, &request->createFAR[0]);
-        // TODO: if error, which cause, and pull out the rule from kernel that
-        // has been set, maybe need to pull out session as well
-        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
-                    "Create FAR error");
-    }
-    //request->createFAR[1].presence?
-    if (request->createFAR[1].presence) {
-        status = UpfN4HandleCreateFar(session, &request->createFAR[1]);
-        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
-                    "Create FAR error");
+    for (int i=0; i<4; i++){
+        if (request->createFAR[i].presence) {
+            UTLT_Info("Create FAR [%d]", i);
+            status = UpfN4HandleCreateFar(session, &request->createFAR[i]);
+            UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
+                        "Create FAR error");
+        }
     }
     
     if (request->createURR.presence) {
@@ -1081,21 +1076,21 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     if (request->createBAR.presence) {
         // TODO
     }
-    if (request->createQER[0].presence) {
-        // TODO
-        for(int i=0;i<2;i++){
+    
+    // Search for QERs
+    for(int i=0;i<4;i++){
+        if (request->createQER[i].presence) {
             status = UpfN4HandleCreateQer(session, &request->createQER[i]);
             UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
-                    "Create QER error");
-        }
-        
-    } else {
-        // TODO: This is hardcode
-        if (session->upfSeid > 1) {
-            UpfSession *s1 = UpfSessionFindBySeid(1);  // Get first creates session
-            UpfQER *upfQer = UpfQERFindByID(s1, 1);    // Always search QERID=1
+                "Create QER error");
+        } else {
+            // TODO: This is hardcode
+            if (session->upfSeid > 1) {
+                UpfSession *s1 = UpfSessionFindBySeid(1);  // Get first creates session
+                UpfQER *upfQer = UpfQERFindByID(s1, 1);    // Always search QERID=1
 
-            UTLT_Assert(UpfQERRegisterToSession(session, upfQer), return STATUS_ERROR, "UpfQERRegisterToSession failed, seid=%d", session->upfSeid);
+                UTLT_Assert(UpfQERRegisterToSession(session, upfQer), return STATUS_ERROR, "UpfQERRegisterToSession failed, seid=%d", session->upfSeid);
+            }
         }
     }
 

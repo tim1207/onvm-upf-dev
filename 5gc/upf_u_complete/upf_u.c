@@ -74,6 +74,10 @@
 #define SRC_INTF_CP 3
 #define SRC_INTF_NUM (SRC_INTF_CP + 1)
 #define FIX_BUFFER
+#define DEFAULT_TB_RATE 5             // (Mbps)
+#define DEFAULT_TB_DEPTH 10000  // Max proceed length
+#define DEFAULT_TB_TOKENS 10000
+
 
 static struct rte_ether_addr dn_eth;
 static struct rte_ether_addr cn_dn_eth;
@@ -191,6 +195,91 @@ SourceInterfaceToPort(uint8_t interface) {
         }
 }
 
+/* Token Bucket */
+struct tb_config {
+        uint64_t tb_rate;    // rate at which tokens are generated (in MBps)
+        uint64_t tb_depth;   // depth of the token bucket (in bytes)
+        uint64_t tb_tokens;  // number of the tokens in the bucket at any given time (in bytes)
+        uint64_t last_cycle;
+        uint64_t cur_cycles;
+        uint16_t used;
+};
+
+// init nf data with tb params
+void
+initTbParams(struct onvm_nf *nf) {
+        struct tb_config *tb_params;
+        tb_params = (struct tb_config *)nf->data;
+        if (tb_params && tb_params->used == 1) return;
+        tb_params = (struct tb_config *)rte_malloc(NULL, sizeof(struct tb_config), 0);
+        tb_params->tb_rate = DEFAULT_TB_RATE;
+        tb_params->tb_depth = DEFAULT_TB_DEPTH;
+        tb_params->tb_tokens = DEFAULT_TB_TOKENS;
+        tb_params->last_cycle = rte_get_tsc_cycles();
+        tb_params->cur_cycles = rte_get_tsc_cycles();
+        tb_params->used = 1;
+        nf->data = (void *)tb_params;   // store to nf ctx
+}
+
+static int
+pktTbForward(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_local_ctx *nf_local_ctx) {
+        struct onvm_nf *nf;
+        struct tb_config *tb_params;
+        uint64_t tokens_produced;
+        uint64_t tb_rate;
+        uint64_t tb_depth;
+        uint64_t tb_tokens;
+        uint64_t last_cycle;
+        uint64_t cur_cycles;
+
+        nf = nf_local_ctx->nf;
+        tb_params = (struct tb_config *)nf->data;
+        tb_rate = tb_params->tb_rate;
+        tb_depth = tb_params->tb_depth;
+        tb_tokens = tb_params->tb_tokens;
+        last_cycle = tb_params->last_cycle;
+        cur_cycles = tb_params->cur_cycles;
+
+        tb_params->cur_cycles = rte_get_tsc_cycles();
+        if (unlikely(pkt->pkt_len > tb_depth)){
+                UTLT_Info("Pkt len %d > TB depth %d, drop it.", pkt->pkt_len, tb_depth);
+                meta->action = ONVM_NF_ACTION_DROP;
+        }
+        else {
+                if (tb_tokens < pkt->pkt_len){
+                        cur_cycles = rte_get_tsc_cycles();
+                        while ((((cur_cycles - last_cycle) * tb_rate * 125000) / rte_get_tsc_hz()) + tb_tokens <
+                               pkt->pkt_len) {
+                                cur_cycles = rte_get_tsc_cycles();
+                        }
+                        tokens_produced = (((cur_cycles - last_cycle) * tb_rate * 125000) / rte_get_tsc_hz());
+                        UTLT_Info("produced tokens: %lu, current tokens: %lu, current cycles: %lu, last cycles: %lu, hz = %lu", tokens_produced, tb_tokens, 
+                                cur_cycles, last_cycle, rte_get_tsc_hz());
+                        /* Update tokens to a max of tb_depth */
+                        if (tokens_produced + tb_tokens > tb_depth) {
+                                tb_tokens = tb_depth;
+                        } else {
+                                tb_tokens += tokens_produced;
+                        }
+
+                        last_cycle = cur_cycles;
+                }
+                tb_tokens -= pkt->pkt_len;
+                meta->action = ONVM_NF_ACTION_OUT;
+        }
+
+        // Renew
+        tb_params->tb_tokens = tb_tokens;
+        tb_params->last_cycle = last_cycle;
+        tb_params->cur_cycles = cur_cycles;
+
+        // Debug
+        UTLT_Info("tb_rate = %lu, tb_depth = %lu, tb_tokens = %lu, last_cycle = %lu, cur_cycles = %lu", 
+           tb_rate, tb_depth, tb_tokens, last_cycle, cur_cycles);
+
+        return 0;
+}
+
 uint64_t seid = 0;
 uint16_t pdrId = 0;
 
@@ -218,6 +307,29 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
         if (pdr) {
                 seid = session->smfSeid;
                 pdrId = pdr->pdrId;
+                UpfQER *qer = NULL;
+                node = session->qer_list->head;
+                while (node) {
+                        qer = (UpfQER *)node->val;
+                        node = node->next;
+                        if (QERGetQFI(qer) == 0){
+                                UTLT_Info("Find AMBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
+                        }
+                        else {
+                                if (qer->flags.maximumBitrate){
+                                        UTLT_Info("Find MBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
+                                }
+                                if (qer->flags.guaranteedBitrate) {
+                                        UTLT_Info("Find GBR (UL: %lu, DL: %lu) in QERs", qer->guaranteedBitrate.ul, qer->guaranteedBitrate.dl);
+                                }       
+                        }
+                }
+                if (qer) {
+                        UTLT_Info("Found QER with MBR/GBR enabled.");
+                }
+                else {
+                        UTLT_Info("QER not Found QER with MBR/GBR enabled.");
+                }
         }
         return pdr;
 }
@@ -246,6 +358,29 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
         if (pdr) {
                 seid = session->smfSeid;
                 pdrId = pdr->pdrId;
+                UpfQER *qer = NULL;
+                node = session->qer_list->head;
+                while (node) {
+                        qer = (UpfQER *)node->val;
+                        node = node->next;
+                        if (QERGetQFI(qer) == 0){
+                                UTLT_Info("Find AMBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
+                        }
+                        else {
+                                if (qer->flags.maximumBitrate){
+                                        UTLT_Info("Find MBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
+                                }
+                                if (qer->flags.guaranteedBitrate) {
+                                        UTLT_Info("Find GBR (UL: %lu, DL: %lu) in QERs", qer->guaranteedBitrate.ul, qer->guaranteedBitrate.dl);
+                                }       
+                        }
+                }
+                if (qer) {
+                        UTLT_Info("Found QER with MBR/GBR enabled.");
+                }
+                else {
+                        UTLT_Info("QER not Found QER with MBR/GBR enabled.");
+                }
         }
         return pdr;
 }
@@ -376,7 +511,6 @@ AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
                 eth_hdr->d_addr.addr_bytes[3] = AnMac[3];
                 eth_hdr->d_addr.addr_bytes[4] = AnMac[4];
                 eth_hdr->d_addr.addr_bytes[5] = AnMac[5];
-
         } else {
                 rte_ether_addr_copy(&cn_dn_eth, &eth_hdr->s_addr);
                 rte_ether_addr_copy(&dn_eth, &eth_hdr->d_addr);
@@ -391,6 +525,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 return 0;
         }
         UTLT_Trace("Get packet\n");
+        UTLT_Info("Handle PKT from port: %d [len: %d]", pkt->port, pkt->pkt_len);
 
         bool is_dl = false;
         meta->action = ONVM_NF_ACTION_DROP;
@@ -471,7 +606,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                         case OUTER_HEADER_REMOVAL_S_TAG:
                         case OUTER_HEADER_REMOVAL_S_C_TAG:
                         default:
-                                printf("unknown\n");
+                                printf("unknown or not implement\n");
                 }
         }
 
@@ -485,6 +620,12 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 UTLT_Trace("Action is unknown\n");
         }
         AttachL2Header(pkt, is_dl);
+        if (meta->action == ONVM_NF_ACTION_OUT && !is_dl){
+                // Apply TB
+                initTbParams(nf_local_ctx->nf);
+                ((struct tb_config *)nf_local_ctx->nf->data)->last_cycle = rte_get_tsc_cycles();
+                pktTbForward(pkt, meta, nf_local_ctx);
+        }
         return status;
 }
 
