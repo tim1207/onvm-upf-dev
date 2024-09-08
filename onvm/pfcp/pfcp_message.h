@@ -23,7 +23,7 @@ typedef struct _IeDescription {
     uint16_t msgLen; // msg struct size
     _Bool isTlvObj;
     int numToParse;
-    int next[35];
+    int next[80];
 } __attribute__((packed)) IeDescription;
 
 /* 5.1 General format */
@@ -911,8 +911,8 @@ typedef struct _PFCPSessionModificationRequest {
     CreateQER createQER;
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
-    UpdatePDR updatePDR;
-    UpdateFAR updateFAR;
+    UpdatePDR updatePDR[2];
+    UpdateFAR updateFAR[2];
     UpdateURR updateURR;
     UpdateQER updateQER;
     UpdateBARPFCPSessionModificationRequest updateBAR;

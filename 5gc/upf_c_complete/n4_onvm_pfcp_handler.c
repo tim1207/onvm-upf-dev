@@ -205,7 +205,7 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
 
     if (createPdr->qERID.presence) {
         // TODO: Need to handle multiple QER
-        upfPdr->flags.qerId = 1;
+            upfPdr->flags.qerId = 1;
         upfPdr->qerId = ntohl(*((uint32_t *)createPdr->qERID.value));
         UTLT_Debug("PDR QER ID: %u", upfPdr->qerId);
     }
@@ -686,7 +686,7 @@ Status _ConvertUpdatePDRTlvToRule(UpfPDR *upfPdr, UpdatePDR *updatePDR) {
     if (updatePDR->qERID.presence) {
         // TODO: Need to handle multiple QER
         /*
-        upfPdr->flags.qerId = 1;
+            upfPdr->flags.qerId = 1;
         upfPdr->qerId = ntohl(*((uint32_t *)updatePDR->qERID.value));
         UTLT_Debug("PDR QER ID: %u", upfPdr->qerId);
         */
@@ -1150,18 +1150,16 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     Bufblk *bufBlk;
 
     /* Create FAR */
-    if (request->createFAR[0].presence) {
-        status = UpfN4HandleCreateFar(session, &request->createFAR[0]);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Create FAR error");
-    }
-    if (request->createFAR[1].presence) {
-        status = UpfN4HandleCreateFar(session, &request->createFAR[1]);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Create FAR2 error");
+    for (int i = 0; i < sizeof(request->createFAR) / sizeof(CreateFAR); i++) {
+        if (request->createFAR[i].presence) {
+            UTLT_Info("Create FAR[%d]", i);
+            status = UpfN4HandleCreateFar(session, &request->createFAR[i]);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                        "Modification: Create FAR[%d] error",i);
+        }
     }
 
-    /*Create QER*/
+    /* Create QER */
     if( request->createQER.presence){
         status = UpfN4HandleCreateQer(session, &request->createQER);
         UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
@@ -1170,24 +1168,26 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
 
     // The order of PDF should be the lastest
     /* Create PDR */
-    if (request->createPDR[0].presence) {
-        status = UpfN4HandleCreatePdr(session, &request->createPDR[0]);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Create PDR error");
-    }
-    if (request->createPDR[1].presence) {
-        status = UpfN4HandleCreatePdr(session, &request->createPDR[1]);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Create PDR2 error");
+    for (int i = 0; i < sizeof(request->createPDR) / sizeof(CreatePDR); i++) {
+        if (request->createPDR[i].presence) {
+            UTLT_Info("Create PDR[%d]", i);
+            status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                        "Modification: Create PDR[%d] error",i);
+        }
     }
 
-    /* Update FAR */
-    if (request->updateFAR.presence) {
-        UTLT_Assert(request->updateFAR.fARID.presence == 1, ,
-                    "[PFCP] FarId in updateFAR not presence");
-        status = UpfN4HandleUpdateFar(session, &request->updateFAR);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Update FAR error");
+    /* Update FAR */    
+    for (int i = 0; i < sizeof(request->updateFAR) / sizeof(UpdateFAR); i++) {
+        // UTLT_Info("Update FAR[%d] presence: %d", i, request->updateFAR[i].presence);
+        if (request->updateFAR[i].presence) {
+            UTLT_Info("Update FAR[%d]", i);
+            UTLT_Assert(request->updateFAR[i].fARID.presence == 1, ,
+                        "[PFCP] FarId in updateFAR not presence");
+            status = UpfN4HandleUpdateFar(session, &request->updateFAR[i]);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                        "Modification: Update FAR[%d] error",i);
+        }
     }
 
     /* Update QER */
@@ -1201,12 +1201,15 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
 
     // The order of PDF should be the lastest
     /* Update PDR */
-    if (request->updatePDR.presence) {
-        UTLT_Assert(request->updatePDR.pDRID.presence == 1, ,
-                    "[PFCP] PdrId in updatePDR not presence!");
-        status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Update PDR error");
+    for (int i = 0; i < sizeof(request->updatePDR) / sizeof(UpdatePDR); i++){
+        if (request->updatePDR[i].presence) {
+            UTLT_Info("Update PDR[%d]", i);
+            UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
+                        "[PFCP] PdrId in updatePDR not presence!");
+            status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                    "Modification: Update PDR[%d] error",i);
+        }
     }
 
     /* Remove FAR */
