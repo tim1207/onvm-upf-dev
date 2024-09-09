@@ -1080,6 +1080,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     // Search for QERs
     for(int i=0;i<4;i++){
         if (request->createQER[i].presence) {
+            UTLT_Info("Create QER [%d]", i);
             status = UpfN4HandleCreateQer(session, &request->createQER[i]);
             UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                 "Create QER error");
@@ -1096,11 +1097,13 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
 
     // The order of PDF should be the lastest
     if (request->createPDR[0].presence) {
+        UTLT_Info("Create PDR [%d]", 0);
         status = UpfN4HandleCreatePdr(session, &request->createPDR[0]);
         UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create PDR Error");
     }
     if (request->createPDR[1].presence) {
+        UTLT_Info("Create PDR [%d]", 1);
         status = UpfN4HandleCreatePdr(session, &request->createPDR[1]);
         UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
                     "Create PDR 2 Error");
@@ -1150,7 +1153,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     Bufblk *bufBlk;
 
     /* Create FAR */
-    for (int i = 0; i < sizeof(request->createFAR) / sizeof(CreateFAR); i++) {
+    for (int i = 0; i < 2; i++) {
         if (request->createFAR[i].presence) {
             UTLT_Info("Create FAR[%d]", i);
             status = UpfN4HandleCreateFar(session, &request->createFAR[i]);
@@ -1168,7 +1171,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
 
     // The order of PDF should be the lastest
     /* Create PDR */
-    for (int i = 0; i < sizeof(request->createPDR) / sizeof(CreatePDR); i++) {
+    for (int i = 0; i < 2; i++) {
         if (request->createPDR[i].presence) {
             UTLT_Info("Create PDR[%d]", i);
             status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
@@ -1178,7 +1181,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     }
 
     /* Update FAR */    
-    for (int i = 0; i < sizeof(request->updateFAR) / sizeof(UpdateFAR); i++) {
+    for (int i = 0; i < 2; i++) {
         // UTLT_Info("Update FAR[%d] presence: %d", i, request->updateFAR[i].presence);
         if (request->updateFAR[i].presence) {
             UTLT_Info("Update FAR[%d]", i);
@@ -1197,11 +1200,11 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
         status = UpfN4HandleUpdateQer(session, &request->updateQER);
         UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
                     "Modification: Update QER error");
-    }
+    } 
 
     // The order of PDF should be the lastest
     /* Update PDR */
-    for (int i = 0; i < sizeof(request->updatePDR) / sizeof(UpdatePDR); i++){
+    for (int i = 0; i < 2; i++){
         if (request->updatePDR[i].presence) {
             UTLT_Info("Update PDR[%d]", i);
             UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
