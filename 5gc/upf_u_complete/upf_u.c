@@ -58,6 +58,7 @@
 
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
+#include "rte_meter.h"
 
 #define NF_TAG "upf_u"
 
@@ -77,6 +78,7 @@
 #define DEFAULT_TB_RATE 5         // (Mbps)
 #define DEFAULT_TB_DEPTH 10000  // Max proceed length
 #define DEFAULT_TB_TOKENS 10000
+#define APP_FLOWS_MAX 256
 
 
 static struct rte_ether_addr dn_eth;
@@ -194,6 +196,61 @@ SourceInterfaceToPort(uint8_t interface) {
             return -1;
     }
 }
+
+
+/* trTCM */
+struct rte_meter_trtcm_params app_trtcm_params = {
+	.cir = 125000,    // bytes per secs
+	.pir = 125000,    // bytes per secs
+	.cbs = 2048,
+	.pbs = 2048
+};
+struct rte_meter_trtcm_profile app_trtcm_profile;
+struct rte_meter_trtcm app_flows[APP_FLOWS_MAX];
+
+static int
+trtcmConfigFlowTables(void){
+    uint32_t i;
+    int rtn;
+    if (likely(app_flows[0].tc > 0))
+        return 0;
+    
+    // config trtcm profile
+    rtn = rte_meter_trtcm_profile_config(&app_trtcm_profile,
+		&app_trtcm_params);
+	if (rtn)
+		return rtn;
+        
+    // config flow meters with trtcm profiles
+    for (i=0; i<APP_FLOWS_MAX; i++){
+        rtn = rte_meter_trtcm_config(&app_flows[i], &app_trtcm_profile);
+        if (rtn)
+            return rtn;
+    }
+
+    UTLT_Info("Flow table configured.");
+    return 0;
+}
+
+static inline int
+trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi){
+    uint8_t out_color = 0;
+    // check configured flow
+    if (unlikely(app_trtcm_profile.cir_period == 0)){
+        UTLT_Info("flow cir_period set err");
+        return -1;
+    }
+    if (unlikely(app_trtcm_profile.pir_period == 0)) {
+        UTLT_Info("flow pir_period set err");    
+        return -1;
+    }
+    out_color = (uint8_t) rte_meter_trtcm_color_blind_check(&app_flows[qfi], 
+        &app_trtcm_profile, 
+        time, 
+        pkt_len);
+    return out_color;
+} 
+
 
 /* Token Bucket */
 struct tb_config {
@@ -610,7 +667,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
     }
 
-    int status = 0;
+    int status = 0, color_result = 0;
     status = HandlePacketWithFar(pkt, far, pdr->qer, meta);
     if (meta->action == ONVM_NF_ACTION_DROP) {
         UTLT_Info("Action is drop\n");
@@ -621,10 +678,26 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && !is_dl){
-        // Apply TB
-        initTbParams(nf_local_ctx->nf);
-        ((struct tb_config *)nf_local_ctx->nf->data)->last_cycle = rte_get_tsc_cycles();
-        pktTbForward(pkt, meta, nf_local_ctx);
+        trtcmConfigFlowTables();
+        int curr_time = rte_rdtsc();
+        color_result = trtcmColorHandle(pkt->pkt_len, curr_time, 4); // should be changed to qfi parsed result
+        switch (color_result){
+        case RTE_COLOR_RED:
+            UTLT_Error("RED(%d), drop pkt", RTE_COLOR_RED);
+            meta->action = ONVM_NF_ACTION_DROP;
+            break;
+        case RTE_COLOR_YELLOW:
+            UTLT_Info("YELLOW(%d), best effort pkt fwd", RTE_COLOR_YELLOW);
+            meta->action = ONVM_NF_ACTION_OUT;
+            break;
+        case RTE_COLOR_GREEN:
+            UTLT_Info("GREEEN(%d), guaranted pkt fwd.", RTE_COLOR_GREEN);
+            meta->action = ONVM_NF_ACTION_OUT;
+            break;
+        default:
+            UTLT_Error("Unexpected trTCM color output.");
+            break;
+        }
     }
     return status;
 }
