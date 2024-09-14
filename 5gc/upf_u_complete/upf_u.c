@@ -56,6 +56,7 @@
 #include "gtp.h"
 #include "upf_context.h"
 
+#include "onvm_flow_table.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "rte_meter.h"
@@ -273,6 +274,21 @@ trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
     return 0;
 }
 
+/* Flow Separation*/
+struct onvm_ft *ft = NULL;
+
+// return idx in flow tables
+uint32_t
+flowSeperation(struct rte_mbuf *pkt){
+    if (unlikely(pkt == NULL || !onvm_pkt_is_ipv4(pkt)))
+        return -1;
+    struct onvm_ft_ipv4_5tuple key;
+    int ret = onvm_ft_fill_key_symmetric(&key, pkt);
+    if (ret < 0)
+        return -1;
+    uint32_t idx = onvm_softrss(&key);
+    return idx;
+}
 
 /* Token Bucket */
 struct tb_config {
@@ -700,9 +716,13 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && !is_dl){
-        trtcmConfigFlowTables();
         int curr_time = rte_rdtsc();
-        color_result = trtcmColorHandle(pkt->pkt_len, curr_time, 4); // should be changed to qfi parsed result
+        if (likely(pkt->pkt_len > 42)){
+            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, 4); // should be changed to qfi parsed result
+        }
+        else{
+            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, 4);
+        }
         if (trtcmPolicer(meta, color_result) > 0)
             UTLT_Error("trTCM Policer error");
     }
@@ -775,6 +795,9 @@ main(int argc, char *argv[]) {
     dn_eth.addr_bytes[3] = DnMac[3];
     dn_eth.addr_bytes[4] = DnMac[4];
     dn_eth.addr_bytes[5] = DnMac[5];
+
+    // trTCM
+    trtcmConfigFlowTables();
 
     UpfSessionPoolInit();
     UeIpToUpfSessionMapInit();
