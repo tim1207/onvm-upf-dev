@@ -249,7 +249,29 @@ trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi){
         time, 
         pkt_len);
     return out_color;
-} 
+}
+
+static inline int
+trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
+    switch (color_result){
+    case RTE_COLOR_RED:
+        UTLT_Info("\033[0;31mRED(%d)\033[0m, drop pkt", RTE_COLOR_RED);
+        meta->action = ONVM_NF_ACTION_DROP;
+        break;
+    case RTE_COLOR_YELLOW:
+        UTLT_Info("\033[0;32mYELLOW(%d)\033[0m, best effort pkt fwd", RTE_COLOR_YELLOW);
+        meta->action = ONVM_NF_ACTION_OUT;
+        break;
+    case RTE_COLOR_GREEN:
+        UTLT_Info("\033[0;33mGREEEN(%d)\033[0m, guaranted pkt fwd.", RTE_COLOR_GREEN);
+        meta->action = ONVM_NF_ACTION_OUT;
+        break;
+    default:
+        UTLT_Error("Unexpected trTCM color output.");
+        return 1;
+    }
+    return 0;
+}
 
 
 /* Token Bucket */
@@ -681,23 +703,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         trtcmConfigFlowTables();
         int curr_time = rte_rdtsc();
         color_result = trtcmColorHandle(pkt->pkt_len, curr_time, 4); // should be changed to qfi parsed result
-        switch (color_result){
-        case RTE_COLOR_RED:
-            UTLT_Error("RED(%d), drop pkt", RTE_COLOR_RED);
-            meta->action = ONVM_NF_ACTION_DROP;
-            break;
-        case RTE_COLOR_YELLOW:
-            UTLT_Info("YELLOW(%d), best effort pkt fwd", RTE_COLOR_YELLOW);
-            meta->action = ONVM_NF_ACTION_OUT;
-            break;
-        case RTE_COLOR_GREEN:
-            UTLT_Info("GREEEN(%d), guaranted pkt fwd.", RTE_COLOR_GREEN);
-            meta->action = ONVM_NF_ACTION_OUT;
-            break;
-        default:
-            UTLT_Error("Unexpected trTCM color output.");
-            break;
-        }
+        if (trtcmPolicer(meta, color_result) > 0)
+            UTLT_Error("trTCM Policer error");
     }
     return status;
 }
