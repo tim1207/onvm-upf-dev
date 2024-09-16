@@ -202,7 +202,7 @@ SourceInterfaceToPort(uint8_t interface) {
 /* trTCM */
 struct rte_meter_trtcm_params app_trtcm_params = {
 	.cir = 125000,    // bytes per secs
-	.pir = 125000,    // bytes per secs
+	.pir = 625000,    // bytes per secs
 	.cbs = 2048,
 	.pbs = 2048
 };
@@ -261,10 +261,12 @@ trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
         break;
     case RTE_COLOR_YELLOW:
         UTLT_Info("\033[0;32mYELLOW(%d)\033[0m, best effort pkt fwd", RTE_COLOR_YELLOW);
-        meta->action = ONVM_NF_ACTION_OUT;
+        meta->flags |= ONVM_SET_BIT(0, RTE_COLOR_YELLOW);
+        meta->action = ONVM_NF_ACTION_DROP;
         break;
     case RTE_COLOR_GREEN:
         UTLT_Info("\033[0;33mGREEEN(%d)\033[0m, guaranted pkt fwd.", RTE_COLOR_GREEN);
+        meta->flags |= ONVM_SET_BIT(0, RTE_COLOR_GREEN);
         meta->action = ONVM_NF_ACTION_OUT;
         break;
     default:
@@ -725,6 +727,13 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
         if (trtcmPolicer(meta, color_result) > 0)
             UTLT_Error("trTCM Policer error");
+        if (ONVM_CHECK_BIT(meta->flags, RTE_COLOR_YELLOW)){
+            // buffer pkt if the buffer not full
+            if (buffer_length < MAX_OF_BUFFER_PACKET_SIZE){
+                buffer[buffer_length++] = pkt;
+                status = 1;
+            }
+        }
     }
     return status;
 }
@@ -754,18 +763,51 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     buffer_length = 0;
 }
 
+uint64_t last_p = NULL;
+static int 
+callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
+    if (unlikely(!last_p)) last_p = rte_get_tsc_cycles();
+    uint64_t cur_p = rte_get_tsc_cycles(), before;
+    struct onvm_nf *nf;
+    struct onvm_pkt_meta *meta;
+    struct packet_buf *out_buf;
+    nf = nf_local_ctx->nf;
+
+    if (buffer_length > 0){
+        for (int i = 0; i < buffer_length; i++) {
+            meta = onvm_get_pkt_meta(buffer[i]);
+            meta->action = ONVM_NF_ACTION_OUT;
+        }
+        onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
+        onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
+        UTLT_Debug("Sending out %u packets\n", buffer_length);
+        buffer_length = 0;
+    }
+
+    if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
+        last_p = cur_p;
+        UTLT_Debug("Stats perform: ");
+        UTLT_Debug("act out: %d", nf->stats.act_out);
+        UTLT_Debug("buffered: %d", nf->stats.tx_buffer);
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char *argv[]) {
     int arg_offset;
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
     // UTLT_SetLogLevel("Panic"); // to eliminate log print influenced jitter
+    UTLT_SetLogLevel("Warning"); // to eliminate log print influenced jitter
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
     nf_function_table = onvm_nflib_init_nf_function_table();
     nf_function_table->pkt_handler = &packet_handler;
     nf_function_table->msg_handler = &msg_handler;
+    nf_function_table->user_actions = &callback_handler;
 
     if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
         onvm_nflib_stop(nf_local_ctx);

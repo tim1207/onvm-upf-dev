@@ -3,4 +3,4 @@
 # AN MAC Address
 3c:fd:fe:b0:ef:f4
 # UPF ID Address
-10.10.1.2
+192.168.1.2
