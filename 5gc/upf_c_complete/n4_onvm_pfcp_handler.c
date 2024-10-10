@@ -203,11 +203,12 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
         UTLT_Warning("UPF do NOT support URR yet");
     }
 
-    if (createPdr->qERID.presence) {
-        // TODO: Need to handle multiple QER
+    for (int i=0; i<2; i++) {
+        if (createPdr->qERID[i].presence) {
             upfPdr->flags.qerId = 1;
-        upfPdr->qerId = ntohl(*((uint32_t *)createPdr->qERID.value));
-        UTLT_Debug("PDR QER ID: %u", upfPdr->qerId);
+            upfPdr->qerId[i] = ntohl(*((uint32_t *)createPdr->qERID[i].value));
+            UTLT_Debug("PDR QER ID: %u", upfPdr->qerId[i]);
+        }
     }
 
     if (createPdr->activatePredefinedRules.presence) {
@@ -255,8 +256,8 @@ Status UpfN4HandleCreatePdr(UpfSession *session, CreatePDR *createPdr) {
         //     upfPdr->qer = UpfQERFindByID(s1, upfPdr->qerId);
         //     UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
         // }
-        upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId);
-        UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId);
+        upfPdr->qer = UpfQERFindByID(session, upfPdr->qerId[0]);
+        UTLT_Assert(upfPdr->qer, rte_free(upfPdr); return STATUS_ERROR, "QER ID[%u] does NOT exist in UPF Context", upfPdr->qerId[0]);
     }
 
     // Register PDR to Session

@@ -263,8 +263,8 @@ typedef struct {
     // TODO: Need to handle multiple URR
     uint32_t urrId;
 
-    // TODO: Need to handle multiple QER
-    uint32_t qerId;
+    // handle multiple QERs
+    uint32_t qerId[2];
 
     // TODO: Need to handle multiple ActivatePredefinedRules, dynamic alloc?
     char     activatePredefinedRules[0x40];
