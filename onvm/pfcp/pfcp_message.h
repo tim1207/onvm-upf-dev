@@ -877,7 +877,7 @@ typedef struct _CreatePDR {
     OuterHeaderRemoval outerHeaderRemoval;
     FARID fARID;
     URRID uRRID;
-    QERID qERID;
+    QERID qERID[2];
     ActivatePredefinedRules activatePredefinedRules;
 } __attribute__((packed)) CreatePDR;
 
