@@ -1097,17 +1097,14 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     }
 
     // The order of PDF should be the lastest
-    if (request->createPDR[0].presence) {
-        UTLT_Info("Create PDR [%d]", 0);
-        status = UpfN4HandleCreatePdr(session, &request->createPDR[0]);
-        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
-                    "Create PDR Error");
-    }
-    if (request->createPDR[1].presence) {
-        UTLT_Info("Create PDR [%d]", 1);
-        status = UpfN4HandleCreatePdr(session, &request->createPDR[1]);
-        UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
-                    "Create PDR 2 Error");
+    // Handle createPDR request
+    for (int i=0; i<4; i++){
+        if (request->createPDR[i].presence) {
+            UTLT_Info("Create PDR [%d]", i);
+            status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
+            UTLT_Assert(status == STATUS_OK, cause = PFCP_CAUSE_REQUEST_REJECTED,
+                        "Create PDR Error");
+        }
     }
 
     PfcpHeader header;
