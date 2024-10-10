@@ -80,6 +80,7 @@
 #define DEFAULT_TB_DEPTH 10000  // Max proceed length
 #define DEFAULT_TB_TOKENS 10000
 #define APP_FLOWS_MAX 256
+#define IP_MASKED(BIGENDIINT, LEN) (BIGENDIINT & (0xFFFFFFFF << (32-LEN)))
 
 
 static struct rte_ether_addr dn_eth;
@@ -277,19 +278,66 @@ trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
 }
 
 /* Flow Separation*/
-struct onvm_ft *ft = NULL;
+struct flow_entry {
+    uint32_t subnet;  // (Network & Mask_bits)
+    int flow_idx;     // maps to trTCM flows table
+    bool in_use;      // to track if the slot is occupied
+}typedef flow_entry_t;
+flow_entry_t iPFlows[APP_FLOWS_MAX];
+uint32_t iPFlowsLen = 0;
+uint32_t trTCMidx = 0; 
 
-// return idx in flow tables
-uint32_t
-flowSeperation(struct rte_mbuf *pkt){
-    if (unlikely(pkt == NULL || !onvm_pkt_is_ipv4(pkt)))
-        return -1;
-    struct onvm_ft_ipv4_5tuple key;
-    int ret = onvm_ft_fill_key_symmetric(&key, pkt);
-    if (ret < 0)
-        return -1;
-    uint32_t idx = onvm_softrss(&key);
-    return idx;
+int hash_function(uint32_t subnet) {
+    return subnet % APP_FLOWS_MAX;
+}
+
+int ft_search(uint32_t subnet) {
+    int index = hash_function(subnet);
+    int original_index = index;
+
+    while (iPFlows[index].in_use) {
+        if (iPFlows[index].subnet == subnet) {
+            return index;
+        }
+        index = (index + 1) % APP_FLOWS_MAX;  // Linear Probing
+        
+        if (index == original_index) {
+            break;
+        }
+    }
+
+    return -1;  // Not found
+}
+
+bool ft_add_entry(uint32_t subnet, int flow_idx) {
+    if (iPFlowsLen >= APP_FLOWS_MAX) {
+        printf("Error: Maximum flow entries reached.\n");
+        return false;
+    }
+
+    if (ft_search(subnet) != -1) {
+        printf("Error: Subnet %u already exists.\n", subnet);
+        return false;
+    }
+
+    int index = hash_function(subnet);
+    while (iPFlows[index].in_use) {         // Linear Probing
+        index = (index + 1) % APP_FLOWS_MAX;
+    }
+
+    // Insert the entry
+    iPFlows[index].subnet = subnet;
+    iPFlows[index].flow_idx = flow_idx;
+    iPFlows[index].in_use = true;
+    iPFlowsLen++;
+    
+    return true;
+}
+
+void init_flow_table() {
+    for (int i = 0; i < APP_FLOWS_MAX; i++) {
+        iPFlows[i].in_use = false;
+    }
 }
 
 /* Token Bucket */
@@ -455,6 +503,13 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     if (pdr) {
         seid = session->smfSeid;
         pdrId = pdr->pdrId;
+        if (pdr->flags.qerId) {
+            for (int i=0; i<2; i++) {
+                if (pdr->qerId[i]) {
+                    UTLT_Info("PDR with QER %d", pdr->qerId[i]);
+                }
+            }
+        }
         UpfQER *qer = NULL;
         node = session->qer_list->head;
         while (node) {
