@@ -911,7 +911,7 @@ typedef struct _PFCPSessionModificationRequest {
     CreateQER createQER;
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
-    UpdatePDR updatePDR[2];
+    UpdatePDR updatePDR[4];
     UpdateFAR updateFAR[2];
     UpdateURR updateURR;
     UpdateQER updateQER;

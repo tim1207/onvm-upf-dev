@@ -45,7 +45,7 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
     if (createPdr->precedence.presence) {
         upfPdr->flags.precedence = 1;
         upfPdr->precedence = ntohl(*((uint32_t *)createPdr->precedence.value));
-        UTLT_Debug("PDR ID: %u", upfPdr->precedence);
+        UTLT_Debug("PDR precedence: %u", upfPdr->precedence);
     }
 
     if (createPdr->pDI.presence) {
@@ -1202,9 +1202,9 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
 
     // The order of PDF should be the lastest
     /* Update PDR */
-    for (int i = 0; i < 2; i++){
+    for (int i = 0; i < 4; i++){
         if (request->updatePDR[i].presence) {
-            UTLT_Info("Update PDR[%d]", i);
+            UTLT_Info("Update PDR [%d]", i);
             UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
                         "[PFCP] PdrId in updatePDR not presence!");
             status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
