@@ -287,12 +287,24 @@ flow_entry_t iPFlows[APP_FLOWS_MAX];
 uint32_t iPFlowsLen = 0;
 uint32_t trTCMidx = 0; 
 
-int hash_function(uint32_t subnet) {
+uint32_t charStr2MaskedIP(char *str, uint32_t *prefix_val){
+    char ip_str[INET_ADDRSTRLEN];
+    uint32_t prefix_len, subnet;
+
+    sscanf(str, "%[^/]/%d", ip_str, &prefix_len);
+    struct in_addr ip_addr;
+    inet_pton(AF_INET, ip_str, &ip_addr);
+    
+    if (prefix_val) *prefix_val = prefix_len;
+    return IP_MASKED(ip_addr.s_addr, prefix_len);
+}
+
+int hashFunc(uint32_t subnet) {
     return subnet % APP_FLOWS_MAX;
 }
 
-int ft_search(uint32_t subnet) {
-    int index = hash_function(subnet);
+int ftSearch(uint32_t subnet) {
+    int index = hashFunc(subnet);
     int original_index = index;
 
     while (iPFlows[index].in_use) {
@@ -309,18 +321,18 @@ int ft_search(uint32_t subnet) {
     return -1;  // Not found
 }
 
-bool ft_add_entry(uint32_t subnet, int flow_idx) {
+bool ftAddEntry(uint32_t subnet, int flow_idx) {
     if (iPFlowsLen >= APP_FLOWS_MAX) {
         printf("Error: Maximum flow entries reached.\n");
         return false;
     }
 
-    if (ft_search(subnet) != -1) {
+    if (ftSearch(subnet) != -1) {
         printf("Error: Subnet %u already exists.\n", subnet);
         return false;
     }
 
-    int index = hash_function(subnet);
+    int index = hashFunc(subnet);
     while (iPFlows[index].in_use) {         // Linear Probing
         index = (index + 1) % APP_FLOWS_MAX;
     }
@@ -334,7 +346,7 @@ bool ft_add_entry(uint32_t subnet, int flow_idx) {
     return true;
 }
 
-void init_flow_table() {
+void ftInit() {
     for (int i = 0; i < APP_FLOWS_MAX; i++) {
         iPFlows[i].in_use = false;
     }
@@ -429,14 +441,14 @@ uint64_t seid = 0;
 uint16_t pdrId = 0;
 
 UPDK_PDR *
-GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
+GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
     UpfSession *session = UpfSessionFindByUeIP(ue_ip);
     UTLT_Assert(session, return NULL, "session not found error");
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
     UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
 
     list_node_t *node = session->pdr_list->head;
-    UpfPDR *pdr = NULL;
+    UpfPDR *pdr = NULL, *target_pdr = NULL;
     while (node) {
         pdr = (UpfPDR *)node->val;
         node = node->next;
@@ -445,10 +457,26 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
                 if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
                     continue;
                 }
+                UTLT_Info("pdr ID: %d", pdr->pdrId);
+                if (!pdr->pdi.sdfFilter.flags.fd) { 
+                    target_pdr = pdr;
+                    continue;
+                }
+                char *last = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
+                if (last != NULL) last += 1;
+                if (last) {
+                    struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
+                    uint32_t prefix_len = 0, fd_target = charStr2MaskedIP(last, &prefix_len);
+                    if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                        UTLT_Info("pdr ID: %d", pdr->pdrId);
+                        target_pdr = pdr;
+                        break;
+                    }
+                }
             }
-            break;
         }
     }
+    pdr = target_pdr;
     if (pdr) {
         seid = session->smfSeid;
         pdrId = pdr->pdrId;
@@ -480,14 +508,14 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) {
 }
 
 UPDK_PDR *
-GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
+GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
     UpfSession *session = UpfSessionFindByTeid(td);
     UTLT_Assert(session, return NULL, "session not found error");
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
     UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
 
     list_node_t *node = session->pdr_list->head;
-    UpfPDR *pdr = NULL;
+    UpfPDR *pdr = NULL, *target_pdr = NULL;
     while (node) {
         pdr = (UpfPDR *)node->val;
         node = node->next;
@@ -496,10 +524,27 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
                 if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
                     continue;
                 }
+                UTLT_Info("pdr ID: %d", pdr->pdrId);
+                if (!pdr->pdi.sdfFilter.flags.fd) {
+                    target_pdr = pdr;
+                    continue;
+                }
+                char *last = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
+                if (last != NULL) last += 1;
+                if (last) {
+                    // TODO: judge the inner IP pkt
+                    struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
+                    uint32_t prefix_len = 0, fd_target = charStr2MaskedIP(last, &prefix_len);
+                    if (IP_MASKED(iph->dst_addr, prefix_len) == fd_target) {
+                        UTLT_Info("pdr ID: %d", pdr->pdrId);
+                        target_pdr = pdr;
+                        break;
+                    }
+                }
             }
-            break;
         }
     }
+    pdr = target_pdr;
     if (pdr) {
         seid = session->smfSeid;
         pdrId = pdr->pdrId;
