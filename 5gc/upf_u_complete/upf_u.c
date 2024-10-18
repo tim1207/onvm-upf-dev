@@ -449,6 +449,8 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
 
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL, *target_pdr = NULL;
+    struct rte_ipv4_hdr *iph = NULL;
+    uint32_t prefix_len = 0, fd_target = 0;
     while (node) {
         pdr = (UpfPDR *)node->val;
         node = node->next;
@@ -457,7 +459,6 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                 if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
                     continue;
                 }
-                UTLT_Info("pdr ID: %d", pdr->pdrId);
                 if (!pdr->pdi.sdfFilter.flags.fd) { 
                     target_pdr = pdr;
                     continue;
@@ -465,10 +466,9 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                 char *last = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
                 if (last != NULL) last += 1;
                 if (last) {
-                    struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
-                    uint32_t prefix_len = 0, fd_target = charStr2MaskedIP(last, &prefix_len);
+                    iph = onvm_pkt_ipv4_hdr(pkt);
+                    fd_target = charStr2MaskedIP(last, &prefix_len);
                     if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
-                        UTLT_Info("pdr ID: %d", pdr->pdrId);
                         target_pdr = pdr;
                         break;
                     }
@@ -480,28 +480,40 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
     if (pdr) {
         seid = session->smfSeid;
         pdrId = pdr->pdrId;
-        UpfQER *qer = NULL;
-        node = session->qer_list->head;
-        while (node) {
-            qer = (UpfQER *)node->val;
-            node = node->next;
-            if (QERGetQFI(qer) == 0){
-                UTLT_Info("Find AMBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
-            }
-            else {
-                if (qer->flags.maximumBitrate){
-                    UTLT_Info("Find MBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
+        for (int i=0; i<2; i++){
+            if (!pdr->qerId[i]) continue;
+            UpfQER *qer = NULL;
+            uint32_t key = 0, qerId = pdr->qerId[i];
+            node = session->qer_list->head;
+            while (node) {
+                qer = (UpfQER *) node->val;
+                node = node->next;
+                if (qer->qerId != qerId) continue;
+                // new ft entry
+                key = pdr->pdi.flags.sdfFilter ? pkt->port + fd_target : pkt->port;
+                if (ftSearch(key) < 0 && qer->flags.maximumBitrate) {
+                    UTLT_Info("QER ID: %d key: %d", qerId, key);
+                    struct rte_meter_trtcm_params trtcm_params = app_trtcm_params;
+                    if (!ftAddEntry(key, trTCMidx)) {
+                        UTLT_Warning("FT add failed");
+                    }
+                    UTLT_Info("Successfully add %d(%d) %d", key, hashFunc(key), trTCMidx);
+                    UTLT_Info("Find MBR (DL: %lu) in QERs", qer->maximumBitrate.dl);
+                    trtcm_params.pir = qer->maximumBitrate.dl * 1000 / 8;
+                    if (qer->flags.guaranteedBitrate) {
+                        UTLT_Info("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
+                        trtcm_params.cir = qer->guaranteedBitrate.dl * 1000 / 8;
+                    }
+                    else {
+                        trtcm_params.cir = trtcm_params.pir;
+                    }
+                    // config trtcm table 
+                    UTLT_Info("TRTCM prarms: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
+                    rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
+                    rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
+                    trTCMidx ++;
                 }
-                if (qer->flags.guaranteedBitrate) {
-                    UTLT_Info("Find GBR (UL: %lu, DL: %lu) in QERs", qer->guaranteedBitrate.ul, qer->guaranteedBitrate.dl);
-                }       
             }
-        }
-        if (qer) {
-            UTLT_Info("Found QER with MBR/GBR enabled.");
-        }
-        else {
-            UTLT_Info("QER not Found QER with MBR/GBR enabled.");
         }
     }
     return pdr;
@@ -516,6 +528,8 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
 
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL, *target_pdr = NULL;
+    struct rte_ipv4_hdr *iph = NULL;
+    uint32_t prefix_len = 0, fd_target = 0;
     while (node) {
         pdr = (UpfPDR *)node->val;
         node = node->next;
@@ -524,7 +538,6 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
                 if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
                     continue;
                 }
-                UTLT_Info("pdr ID: %d", pdr->pdrId);
                 if (!pdr->pdi.sdfFilter.flags.fd) {
                     target_pdr = pdr;
                     continue;
@@ -533,10 +546,9 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
                 if (last != NULL) last += 1;
                 if (last) {
                     // TODO: judge the inner IP pkt
-                    struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
-                    uint32_t prefix_len = 0, fd_target = charStr2MaskedIP(last, &prefix_len);
+                    iph = onvm_pkt_ipv4_hdr(pkt);
+                    fd_target = charStr2MaskedIP(last, &prefix_len);
                     if (IP_MASKED(iph->dst_addr, prefix_len) == fd_target) {
-                        UTLT_Info("pdr ID: %d", pdr->pdrId);
                         target_pdr = pdr;
                         break;
                     }
@@ -548,35 +560,40 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
     if (pdr) {
         seid = session->smfSeid;
         pdrId = pdr->pdrId;
-        if (pdr->flags.qerId) {
-            for (int i=0; i<2; i++) {
-                if (pdr->qerId[i]) {
-                    UTLT_Info("PDR with QER %d", pdr->qerId[i]);
+        for (int i=0; i<2; i++){
+            if (!pdr->qerId[i]) continue;
+            UpfQER *qer = NULL;
+            uint32_t key = 0, qerId = pdr->qerId[i];
+            node = session->qer_list->head;
+            while (node) {
+                qer = (UpfQER *) node->val;
+                node = node->next;
+                if (qer->qerId != qerId) continue;
+                // new ft entry
+                key = pdr->pdi.flags.sdfFilter ? pkt->port + fd_target : pkt->port;
+                if (ftSearch(key) < 0 && qer->flags.maximumBitrate) {
+                    UTLT_Info("QER ID: %d key: %d", qerId, key);
+                    struct rte_meter_trtcm_params trtcm_params = app_trtcm_params;
+                    if (!ftAddEntry(key, trTCMidx)) {
+                        UTLT_Warning("FT add failed");
+                    }
+                    UTLT_Info("Successfully add %d(%d) %d", key, hashFunc(key), trTCMidx);
+                    UTLT_Info("Find MBR (UL: %lu) in QERs", qer->maximumBitrate.ul);
+                    trtcm_params.pir = qer->maximumBitrate.ul * 1000 / 8;
+                    if (qer->flags.guaranteedBitrate) {
+                        UTLT_Info("Find GBR (UL: %lu) in QERs", qer->guaranteedBitrate.ul);
+                        trtcm_params.cir = qer->guaranteedBitrate.ul * 1000 / 8;
+                    }
+                    else {
+                        trtcm_params.cir = trtcm_params.pir;
+                    }
+                    // config trtcm table 
+                    UTLT_Info("TRTCM prarms: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
+                    rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
+                    rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
+                    trTCMidx ++;
                 }
             }
-        }
-        UpfQER *qer = NULL;
-        node = session->qer_list->head;
-        while (node) {
-            qer = (UpfQER *)node->val;
-            node = node->next;
-            if (QERGetQFI(qer) == 0){
-                UTLT_Info("Find AMBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
-            }
-            else {
-                if (qer->flags.maximumBitrate){
-                    UTLT_Info("Find MBR (UL: %lu, DL: %lu) in QERs", qer->maximumBitrate.ul, qer->maximumBitrate.dl);
-                }
-                if (qer->flags.guaranteedBitrate) {
-                    UTLT_Info("Find GBR (UL: %lu, DL: %lu) in QERs", qer->guaranteedBitrate.ul, qer->guaranteedBitrate.dl);
-                }       
-            }
-        }
-        if (qer) {
-            UTLT_Info("Found QER with MBR/GBR enabled.");
-        }
-        else {
-            UTLT_Info("QER not Found QER with MBR/GBR enabled.");
         }
     }
     return pdr;
@@ -900,7 +917,7 @@ main(int argc, char *argv[]) {
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
     // UTLT_SetLogLevel("Panic"); // to eliminate log print influenced jitter
-    UTLT_SetLogLevel("Warning"); // to eliminate log print influenced jitter
+    UTLT_SetLogLevel("Info"); // to eliminate log print influenced jitter
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
