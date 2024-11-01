@@ -463,11 +463,10 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                     target_pdr = pdr;
                     continue;
                 }
-                char *last = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
-                if (last != NULL) last += 1;
-                if (last) {
+                char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
+                if (ip_str != NULL && ++ip_str) {
                     iph = onvm_pkt_ipv4_hdr(pkt);
-                    fd_target = charStr2MaskedIP(last, &prefix_len);
+                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
                     if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
                         target_pdr = pdr;
                         break;
@@ -505,10 +504,10 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                         trtcm_params.cir = qer->guaranteedBitrate.dl * 1000 / 8;
                     }
                     else {
-                        trtcm_params.cir = trtcm_params.pir;
+                        trtcm_params.cir = 0;
                     }
                     // config trtcm table 
-                    UTLT_Info("TRTCM prarms: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
+                    UTLT_Info("TRTCM params: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
                     rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
                     rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
                     trTCMidx ++;
@@ -542,12 +541,11 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
                     target_pdr = pdr;
                     continue;
                 }
-                char *last = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
-                if (last != NULL) last += 1;
-                if (last) {
+                char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
+                if (ip_str != NULL && ++ip_str) {
                     // TODO: judge the inner IP pkt
                     iph = onvm_pkt_ipv4_hdr(pkt);
-                    fd_target = charStr2MaskedIP(last, &prefix_len);
+                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
                     if (IP_MASKED(iph->dst_addr, prefix_len) == fd_target) {
                         target_pdr = pdr;
                         break;
@@ -585,10 +583,10 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
                         trtcm_params.cir = qer->guaranteedBitrate.ul * 1000 / 8;
                     }
                     else {
-                        trtcm_params.cir = trtcm_params.pir;
+                        trtcm_params.cir = 0;
                     }
                     // config trtcm table 
-                    UTLT_Info("TRTCM prarms: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
+                    UTLT_Info("TRTCM params: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
                     rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
                     rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
                     trTCMidx ++;
@@ -834,13 +832,21 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         UTLT_Trace("Action is unknown\n");
     }
     AttachL2Header(pkt, is_dl);
-    if (meta->action == ONVM_NF_ACTION_OUT && !is_dl){
-        int curr_time = rte_rdtsc();
+    if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
+        int curr_time = rte_rdtsc(), key, fd_target, prefix_len;
+        if (pdr->pdi.flags.sdfFilter) {
+            char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
+            if (ip_str != NULL && ++ip_str) {
+                fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+            }
+        }
+        key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
+        UTLT_Info("The key is: %d(%d), corres to %d", key, hashFunc(key), ftSearch(key));
         if (likely(pkt->pkt_len > 42)){
-            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, 4); // should be changed to qfi parsed result
+            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key)); // should be changed to qfi parsed result
         }
         else{
-            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, 4);
+            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key));
         }
         if (trtcmPolicer(meta, color_result) > 0)
             UTLT_Error("trTCM Policer error");
@@ -893,7 +899,8 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     if (buffer_length > 0){
         for (int i = 0; i < buffer_length; i++) {
             meta = onvm_get_pkt_meta(buffer[i]);
-            meta->action = ONVM_NF_ACTION_OUT;
+            if (ONVM_CHECK_BIT(meta->flags, RTE_COLOR_YELLOW))
+                meta->action = ONVM_NF_ACTION_OUT;
         }
         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
         onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
