@@ -208,6 +208,7 @@ struct rte_meter_trtcm_params app_trtcm_params = {
 	.pbs = 2048
 };
 struct rte_meter_trtcm_profile app_trtcm_profile;
+struct rte_meter_trtcm_profile app_flow_trtcm_profile;
 struct rte_meter_trtcm app_flows[APP_FLOWS_MAX];
 
 static int
@@ -235,7 +236,7 @@ trtcmConfigFlowTables(void){
 }
 
 static inline int
-trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi){
+trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi, struct rte_meter_trtcm_profile *target_profile){
     uint8_t out_color = 0;
     // check configured flow
     if (unlikely(app_trtcm_profile.cir_period == 0)){
@@ -247,7 +248,7 @@ trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi){
         return -1;
     }
     out_color = (uint8_t) rte_meter_trtcm_color_blind_check(&app_flows[qfi], 
-        &app_trtcm_profile, 
+        target_profile, 
         time, 
         pkt_len);
     return out_color;
@@ -502,14 +503,16 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                     if (qer->flags.guaranteedBitrate) {
                         UTLT_Info("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
                         trtcm_params.cir = qer->guaranteedBitrate.dl * 1000 / 8;
+                        rte_meter_trtcm_profile_config(&app_flow_trtcm_profile, &trtcm_params);
+                        rte_meter_trtcm_config(&app_flows[trTCMidx], &app_flow_trtcm_profile);
                     }
                     else {
-                        trtcm_params.cir = 0;
+                        trtcm_params.cir = 1;
+                        rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
+                        rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
                     }
                     // config trtcm table 
                     UTLT_Info("TRTCM params: %d %d %d %d\n", trtcm_params.cir, trtcm_params.pir, trtcm_params.cbs, trtcm_params.pbs);
-                    rte_meter_trtcm_profile_config(&app_trtcm_profile, &trtcm_params);
-                    rte_meter_trtcm_config(&app_flows[trTCMidx], &app_trtcm_profile);
                     trTCMidx ++;
                 }
             }
@@ -833,20 +836,24 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
-        int curr_time = rte_rdtsc(), key, fd_target, prefix_len;
+        int key, fd_target, prefix_len;
+        uint64_t curr_time = rte_get_tsc_cycles();
+        struct rte_meter_trtcm_profile *trtcm_profile = NULL;
         if (pdr->pdi.flags.sdfFilter) {
             char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
             if (ip_str != NULL && ++ip_str) {
                 fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                trtcm_profile = &app_flow_trtcm_profile;
             }
-        }
+        } 
+        else 
+            trtcm_profile = &app_trtcm_profile;
         key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
-        UTLT_Info("The key is: %d(%d), corres to %d", key, hashFunc(key), ftSearch(key));
         if (likely(pkt->pkt_len > 42)){
-            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key)); // should be changed to qfi parsed result
+            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key), trtcm_profile); // should be changed to qfi parsed result
         }
         else{
-            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key));
+            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key), trtcm_profile);
         }
         if (trtcmPolicer(meta, color_result) > 0)
             UTLT_Error("trTCM Policer error");
@@ -899,14 +906,13 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     if (buffer_length > 0){
         for (int i = 0; i < buffer_length; i++) {
             meta = onvm_get_pkt_meta(buffer[i]);
-            if (ONVM_CHECK_BIT(meta->flags, RTE_COLOR_YELLOW))
-                meta->action = ONVM_NF_ACTION_OUT;
+            meta->action = ONVM_NF_ACTION_OUT;
         }
         onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
-        onvm_pkt_flush_all_nfs(nf->nf_tx_mgr, nf);
+        onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
         UTLT_Debug("Sending out %u packets\n", buffer_length);
         buffer_length = 0;
-    }
+    }   
 
     if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
         last_p = cur_p;
@@ -924,7 +930,7 @@ main(int argc, char *argv[]) {
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
     // UTLT_SetLogLevel("Panic"); // to eliminate log print influenced jitter
-    UTLT_SetLogLevel("Info"); // to eliminate log print influenced jitter
+    UTLT_SetLogLevel("Warning"); // to eliminate log print influenced jitter
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
