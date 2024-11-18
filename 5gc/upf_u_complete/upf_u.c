@@ -76,7 +76,7 @@
 #define SRC_INTF_CP 3
 #define SRC_INTF_NUM (SRC_INTF_CP + 1)
 #define FIX_BUFFER
-#define DEFAULT_TB_RATE 5         // (Mbps)
+#define DEFAULT_TB_RATE 10         // (Mbps)
 #define DEFAULT_TB_DEPTH 10000  // Max proceed length
 #define DEFAULT_TB_TOKENS 10000
 #define APP_FLOWS_MAX 256
@@ -259,16 +259,17 @@ trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
     switch (color_result){
     case RTE_COLOR_RED:
         UTLT_Info("\033[0;31mRED(%d)\033[0m, drop pkt", RTE_COLOR_RED);
+        meta->flags = RTE_COLOR_RED;
         meta->action = ONVM_NF_ACTION_DROP;
         break;
     case RTE_COLOR_YELLOW:
         UTLT_Info("\033[0;32mYELLOW(%d)\033[0m, best effort pkt fwd", RTE_COLOR_YELLOW);
-        meta->flags |= ONVM_SET_BIT(0, RTE_COLOR_YELLOW);
+        meta->flags = RTE_COLOR_YELLOW;
         meta->action = ONVM_NF_ACTION_DROP;
         break;
     case RTE_COLOR_GREEN:
         UTLT_Info("\033[0;33mGREEEN(%d)\033[0m, guaranted pkt fwd.", RTE_COLOR_GREEN);
-        meta->flags |= ONVM_SET_BIT(0, RTE_COLOR_GREEN);
+        meta->flags = RTE_COLOR_GREEN;
         meta->action = ONVM_NF_ACTION_OUT;
         break;
     default:
@@ -375,68 +376,25 @@ initTbParams(struct onvm_nf *nf) {
     tb_params->tb_tokens = DEFAULT_TB_TOKENS;
     tb_params->last_cycle = rte_get_tsc_cycles();
     tb_params->cur_cycles = rte_get_tsc_cycles();
-    tb_params->used = 1;
+    // tb_params->used = 1;
     nf->data = (void *)tb_params;   // store to nf ctx
 }
 
-static int
-pktTbForward(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_local_ctx *nf_local_ctx) {
-    struct onvm_nf *nf;
-    struct tb_config *tb_params;
-    uint64_t tokens_produced;
-    uint64_t tb_rate;
-    uint64_t tb_depth;
-    uint64_t tb_tokens;
-    uint64_t last_cycle;
+void
+updateTbTokens(struct onvm_nf *nf, struct tb_config *tb_params){
     uint64_t cur_cycles;
-
-    nf = nf_local_ctx->nf;
-    tb_params = (struct tb_config *)nf->data;
-    tb_rate = tb_params->tb_rate;
-    tb_depth = tb_params->tb_depth;
-    tb_tokens = tb_params->tb_tokens;
-    last_cycle = tb_params->last_cycle;
-    cur_cycles = tb_params->cur_cycles;
-
-    tb_params->cur_cycles = rte_get_tsc_cycles();
-    if (unlikely(pkt->pkt_len > tb_depth)){
-        UTLT_Info("Pkt len %d > TB depth %d, drop it.", pkt->pkt_len, tb_depth);
-        meta->action = ONVM_NF_ACTION_DROP;
-    }
-    else {
-        if (tb_tokens < pkt->pkt_len){
-            cur_cycles = rte_get_tsc_cycles();
-            while ((((cur_cycles - last_cycle) * tb_rate * 125000) / rte_get_tsc_hz()) + tb_tokens <
-                   pkt->pkt_len) {
-                cur_cycles = rte_get_tsc_cycles();
-            }
-            tokens_produced = (((cur_cycles - last_cycle) * tb_rate * 125000) / rte_get_tsc_hz());
-            UTLT_Info("produced tokens: %lu, current tokens: %lu, current cycles: %lu, last cycles: %lu, hz = %lu", tokens_produced, tb_tokens, 
-                cur_cycles, last_cycle, rte_get_tsc_hz());
-            /* Update tokens to a max of tb_depth */
-            if (tokens_produced + tb_tokens > tb_depth) {
-                tb_tokens = tb_depth;
-            } else {
-                tb_tokens += tokens_produced;
-            }
-
-            last_cycle = cur_cycles;
-        }
-        tb_tokens -= pkt->pkt_len;
-        meta->action = ONVM_NF_ACTION_OUT;
-    }
-
-    // Renew
-    tb_params->tb_tokens = tb_tokens;
-    tb_params->last_cycle = last_cycle;
-    tb_params->cur_cycles = cur_cycles;
-
-    // Debug
-    UTLT_Info("tb_rate = %lu, tb_depth = %lu, tb_tokens = %lu, last_cycle = %lu, cur_cycles = %lu", 
-       tb_rate, tb_depth, tb_tokens, last_cycle, cur_cycles);
-
-    return 0;
+    uint64_t elapsed_cycles;
+    uint64_t tokens_produced;
+    //
+    cur_cycles = rte_get_tsc_cycles();
+    elapsed_cycles = cur_cycles - tb_params->last_cycle;
+    tokens_produced = (elapsed_cycles * tb_params->tb_rate * 125000) / rte_get_tsc_hz();
+    tb_params->tb_tokens += tokens_produced;
+    if (tb_params->tb_tokens > tb_params->tb_depth)
+        tb_params->tb_tokens = tb_params->tb_depth;
+    tb_params->last_cycle = cur_cycles;
 }
+
 
 uint64_t seid = 0;
 uint16_t pdrId = 0;
@@ -501,7 +459,7 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                     UTLT_Info("Find MBR (DL: %lu) in QERs", qer->maximumBitrate.dl);
                     trtcm_params.pir = qer->maximumBitrate.dl * 1000 / 8;
                     if (qer->flags.guaranteedBitrate) {
-                        UTLT_Info("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
+                        UTLT_Warning("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
                         trtcm_params.cir = qer->guaranteedBitrate.dl * 1000 / 8;
                         rte_meter_trtcm_profile_config(&app_flow_trtcm_profile, &trtcm_params);
                         rte_meter_trtcm_config(&app_flows[trTCMidx], &app_flow_trtcm_profile);
@@ -836,6 +794,20 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
+        // Step 1. Token Bucket (Session)
+        struct onvm_nf *nf = nf_local_ctx->nf;
+        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
+        updateTbTokens(nf, tb_params);
+        if (tb_params->tb_tokens > pkt->pkt_len) {
+            tb_params->tb_tokens -= pkt->pkt_len;
+            meta->action = ONVM_NF_ACTION_OUT;
+        }
+        else {
+            meta->action = ONVM_NF_ACTION_DROP;
+            return status;
+        }
+        
+        // Step 2. trTCM (Flow)
         int key, fd_target, prefix_len;
         uint64_t curr_time = rte_get_tsc_cycles();
         struct rte_meter_trtcm_profile *trtcm_profile = NULL;
@@ -845,24 +817,21 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 fd_target = charStr2MaskedIP(ip_str, &prefix_len);
                 trtcm_profile = &app_flow_trtcm_profile;
             }
+            key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
+            if (likely(pkt->pkt_len > 42))
+                color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key), trtcm_profile);
+            else
+                color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key), trtcm_profile);
+            if (trtcmPolicer(meta, color_result) > 0)
+                UTLT_Error("trTCM Policer error");
         } 
-        else 
-            trtcm_profile = &app_trtcm_profile;
-        key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
-        if (likely(pkt->pkt_len > 42)){
-            color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key), trtcm_profile); // should be changed to qfi parsed result
+        else {
+            meta->flags = RTE_COLOR_YELLOW;
         }
-        else{
-            color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key), trtcm_profile);
-        }
-        if (trtcmPolicer(meta, color_result) > 0)
-            UTLT_Error("trTCM Policer error");
-        if (ONVM_CHECK_BIT(meta->flags, RTE_COLOR_YELLOW)){
-            // buffer pkt if the buffer not full
-            if (buffer_length < MAX_OF_BUFFER_PACKET_SIZE){
-                buffer[buffer_length++] = pkt;
-                status = 1;
-            }
+
+        if (meta->flags == RTE_COLOR_YELLOW){
+            // TODO: RED
+            meta->action = ONVM_NF_ACTION_OUT;
         }
     }
     return status;
@@ -903,16 +872,16 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     struct packet_buf *out_buf;
     nf = nf_local_ctx->nf;
 
-    if (buffer_length > 0){
-        for (int i = 0; i < buffer_length; i++) {
-            meta = onvm_get_pkt_meta(buffer[i]);
-            meta->action = ONVM_NF_ACTION_OUT;
-        }
-        onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
-        onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
-        UTLT_Debug("Sending out %u packets\n", buffer_length);
-        buffer_length = 0;
-    }   
+    // if (buffer_length > 0){
+    //     for (int i = 0; i < buffer_length; i++) {
+    //         meta = onvm_get_pkt_meta(buffer[i]);
+    //         meta->action = ONVM_NF_ACTION_OUT;
+    //     }
+    //     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
+    //     onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
+    //     UTLT_Debug("Sending out %u packets\n", buffer_length);
+    //     buffer_length = 0;
+    // }   
 
     if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
         last_p = cur_p;
@@ -970,6 +939,7 @@ main(int argc, char *argv[]) {
 
     // trTCM
     trtcmConfigFlowTables();
+    initTbParams(nf_local_ctx->nf);
 
     UpfSessionPoolInit();
     UeIpToUpfSessionMapInit();
