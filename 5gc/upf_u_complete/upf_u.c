@@ -256,6 +256,11 @@ trtcmColorHandle(uint32_t pkt_len, uint64_t time, uint8_t qfi, struct rte_meter_
 
 static inline int
 trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
+    if (meta->action == ONVM_NF_ACTION_DROP) {
+        meta->flags = RTE_COLOR_RED;
+        UTLT_Info("TB not enough & traffic flow");
+        return 0;
+    }
     switch (color_result){
     case RTE_COLOR_RED:
         UTLT_Info("\033[0;31mRED(%d)\033[0m, drop pkt", RTE_COLOR_RED);
@@ -804,9 +809,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
         else {
             meta->action = ONVM_NF_ACTION_DROP;
-            return status;
         }
-        
+
         // Step 2. trTCM (Flow)
         int key, fd_target, prefix_len;
         uint64_t curr_time = rte_get_tsc_cycles();
@@ -826,7 +830,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 UTLT_Error("trTCM Policer error");
         } 
         else {
-            meta->flags = RTE_COLOR_YELLOW;
+            if (meta->action == ONVM_NF_ACTION_OUT)
+                meta->flags = RTE_COLOR_YELLOW;
         }
 
         if (meta->flags == RTE_COLOR_YELLOW){
