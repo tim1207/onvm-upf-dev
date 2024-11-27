@@ -702,8 +702,10 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     if (pkt == NULL || meta == NULL) {
         return 0;
     }
+    uint32_t cal_pktlen = 0;
     UTLT_Trace("Get packet\n");
     UTLT_Info("Handle PKT from port: %d [len: %d]", pkt->port, pkt->pkt_len);
+    cal_pktlen = pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr);
 
     bool is_dl = false;
     meta->action = ONVM_NF_ACTION_DROP;
@@ -810,10 +812,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
                 trtcm_profile = &app_flow_trtcm_profile;
             }
             key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
-            if (likely(pkt->pkt_len > 42))
-                color_result = trtcmColorHandle(pkt->pkt_len - sizeof(struct rte_ether_hdr) - sizeof(struct rte_ipv4_hdr) - sizeof(struct rte_udp_hdr), curr_time, ftSearch(key), trtcm_profile);
-            else
-                color_result = trtcmColorHandle(pkt->pkt_len, curr_time, ftSearch(key), trtcm_profile);
+            color_result = trtcmColorHandle(cal_pktlen, curr_time, ftSearch(key), trtcm_profile);
             if (trtcmPolicer(meta, color_result) > 0)
                 UTLT_Error("trTCM Policer error");
         } 
@@ -831,12 +830,12 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         updateTbTokens(nf, tb_params);
         if (tb_params->tb_tokens > pkt->pkt_len) {
             if (meta->flags == RTE_COLOR_GREEN) {
-                tb_params->tb_tokens -= pkt->pkt_len;
+                tb_params->tb_tokens -= cal_pktlen;
                 meta->action = ONVM_NF_ACTION_OUT;
             }
             else if (tb_params->tb_tokens > 2 * pkt->pkt_len) {
                 // Should add RED
-                tb_params->tb_tokens -= pkt->pkt_len;
+                tb_params->tb_tokens -= cal_pktlen;
                 meta->action = ONVM_NF_ACTION_OUT;
             }
             else {
