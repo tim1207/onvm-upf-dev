@@ -801,7 +801,16 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
-        // Step 1. trTCM (check flow)
+        // Step 1. Token Bucket (session)
+        struct onvm_nf *nf = nf_local_ctx->nf;
+        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
+        updateTbTokens(nf, tb_params);
+        if (tb_params->tb_tokens < pkt->pkt_len) {
+            meta->action = ONVM_NF_ACTION_DROP;
+            return status;
+        }       
+
+        // Step 2. trTCM (QoS flow)
         int key, fd_target, prefix_len;
         uint64_t curr_time = rte_get_tsc_cycles();
         struct rte_meter_trtcm_profile *trtcm_profile = NULL;
@@ -818,32 +827,16 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         } 
         else {
             meta->flags = RTE_COLOR_YELLOW;
-        }
-
-        if (meta->flags == RTE_COLOR_RED) {
-            return status;  // directly drop
-        }
-
-        // Step 2. Token Bucket (session) -- judge and forward Y/G pkts
-        struct onvm_nf *nf = nf_local_ctx->nf;
-        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
-        updateTbTokens(nf, tb_params);
-        if (tb_params->tb_tokens > pkt->pkt_len) {
-            if (meta->flags == RTE_COLOR_GREEN) {
-                tb_params->tb_tokens -= cal_pktlen;
-                meta->action = ONVM_NF_ACTION_OUT;
-            }
-            else if (tb_params->tb_tokens > 2 * pkt->pkt_len) {
-                // Should add RED
-                tb_params->tb_tokens -= cal_pktlen;
-                meta->action = ONVM_NF_ACTION_OUT;
-            }
-            else {
-                meta->action = ONVM_NF_ACTION_DROP;
-            }
-        }
-        else {
             meta->action = ONVM_NF_ACTION_DROP;
+        }
+
+        if (meta->flags == RTE_COLOR_GREEN) {
+            tb_params->tb_tokens -= cal_pktlen;
+            meta->action = ONVM_NF_ACTION_OUT;
+        }
+        if (meta->flags == RTE_COLOR_YELLOW && tb_params->tb_tokens > 2 * pkt->pkt_len) {
+            tb_params->tb_tokens -= cal_pktlen;
+            meta->action = ONVM_NF_ACTION_OUT;
         }
     }
     return status;
