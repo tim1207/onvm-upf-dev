@@ -812,9 +812,11 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
 
         // Step 2. trTCM (QoS flow)
         int key, fd_target, prefix_len;
+        bool isQos = false;
         uint64_t curr_time = rte_get_tsc_cycles();
         struct rte_meter_trtcm_profile *trtcm_profile = NULL;
         if (pdr->pdi.flags.sdfFilter) {
+            isQos = true;
             char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
             if (ip_str != NULL && ++ip_str) {
                 fd_target = charStr2MaskedIP(ip_str, &prefix_len);
@@ -834,10 +836,22 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             tb_params->tb_tokens -= cal_pktlen;
             meta->action = ONVM_NF_ACTION_OUT;
         }
-        if (meta->flags == RTE_COLOR_YELLOW && tb_params->tb_tokens > 2 * pkt->pkt_len) {
-            tb_params->tb_tokens -= cal_pktlen;
-            meta->action = ONVM_NF_ACTION_OUT;
+        
+        if (meta->flags == RTE_COLOR_YELLOW) {
+            if (isQos) {
+                if (tb_params->tb_tokens > pkt->pkt_len) {
+                    tb_params->tb_tokens -= cal_pktlen;
+                    meta->action = ONVM_NF_ACTION_OUT;        
+                }
+            }
+            else {
+                if (tb_params->tb_tokens > 5 * pkt->pkt_len) {
+                    tb_params->tb_tokens -= cal_pktlen;
+                    meta->action = ONVM_NF_ACTION_OUT;
+                }
+            }
         }
+
     }
     return status;
 }
