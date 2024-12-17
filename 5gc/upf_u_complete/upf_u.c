@@ -81,6 +81,7 @@
 #define DEFAULT_TB_TOKENS 10000
 #define APP_FLOWS_MAX 256
 #define IP_MASKED(BIGENDIINT, LEN) (BIGENDIINT & (0xFFFFFFFF << (32-LEN)))
+#define MAX_UE 256 // Max number of UEs
 
 
 static struct rte_ether_addr dn_eth;
@@ -369,36 +370,76 @@ struct tb_config {
     uint16_t used;
 };
 
-// init nf data with tb params
-void
-initTbParams(struct onvm_nf *nf) {
-    struct tb_config *tb_params;
-    tb_params = (struct tb_config *)nf->data;
-    if (tb_params && tb_params->used == 1) return;
-    tb_params = (struct tb_config *)rte_malloc(NULL, sizeof(struct tb_config), 0);
-    tb_params->tb_rate = DEFAULT_TB_RATE;
-    tb_params->tb_depth = DEFAULT_TB_DEPTH;
-    tb_params->tb_tokens = DEFAULT_TB_TOKENS;
-    tb_params->last_cycle = rte_get_tsc_cycles();
-    tb_params->cur_cycles = rte_get_tsc_cycles();
-    // tb_params->used = 1;
-    nf->data = (void *)tb_params;   // store to nf ctx
+struct ue_tb {
+    uint32_t ue_ip;
+    uint32_t ue_ambr;
+    struct tb_config ue_tb_params;
+};
+
+struct ue_tb ue_table[MAX_UE];
+
+void 
+initUeTable(){
+    for (int i = 0; i < MAX_UE; i++) {
+        ue_table[i].ue_ip = 0;
+        ue_table[i].ue_ambr = 0;
+        ue_table[i].ue_tb_params.tb_rate = 0;
+        ue_table[i].ue_tb_params.tb_depth = 0;
+        ue_table[i].ue_tb_params.tb_tokens = 0;
+        ue_table[i].ue_tb_params.last_cycle = rte_get_tsc_cycles();
+        ue_table[i].ue_tb_params.cur_cycles = rte_get_tsc_cycles();
+    }
 }
 
-void
-updateTbTokens(struct onvm_nf *nf, struct tb_config *tb_params){
-    uint64_t cur_cycles;
-    uint64_t elapsed_cycles;
-    uint64_t tokens_produced;
-    //
-    cur_cycles = rte_get_tsc_cycles();
-    elapsed_cycles = cur_cycles - tb_params->last_cycle;
-    tokens_produced = (elapsed_cycles * tb_params->tb_rate * 125000) / rte_get_tsc_hz();
-    tb_params->tb_tokens += tokens_produced;
-    if (tb_params->tb_tokens > tb_params->tb_depth)
-        tb_params->tb_tokens = tb_params->tb_depth;
-    tb_params->last_cycle = cur_cycles;
+uint32_t 
+findIndexByUeIpAddress(uint32_t ue_ip) {
+    int index = -1;
+    for (int i = 0; i < MAX_UE; i++)
+    {
+        if (ue_table[i].ue_ip == ue_ip) {
+            index = i;
+        }
+    }
+    return index;
 }
+
+void 
+addEntrybyUeIp(uint32_t ue_ip, uint32_t ue_ambr) {
+    for (int i = 0; i < MAX_UE; i++) {
+        if (ue_table[i].ue_ip == 0) { // find unused
+            ue_table[i].ue_ip = ue_ip;
+            ue_table[i].ue_ambr = ue_ambr;
+            ue_table[i].ue_tb_params.tb_rate = ue_ambr/1000;
+            ue_table[i].ue_tb_params.tb_depth = ue_ambr;
+            ue_table[i].ue_tb_params.tb_tokens = ue_ambr; 
+            break;
+        }
+    }
+    return;
+}
+
+void 
+updateTokenbyIndex(int index) {
+    if ( index > -1) {
+        uint64_t cur_cycles;
+        uint64_t elapsed_cycles;
+        uint64_t tokens_produced;
+        //
+        cur_cycles = rte_get_tsc_cycles();
+        elapsed_cycles = cur_cycles - ue_table[index].ue_tb_params.last_cycle;
+        tokens_produced = (elapsed_cycles * ue_table[index].ue_tb_params.tb_rate * 125000) / rte_get_tsc_hz();
+        ue_table[index].ue_tb_params.tb_tokens += tokens_produced;
+        if (ue_table[index].ue_tb_params.tb_tokens > ue_table[index].ue_tb_params.tb_depth)
+            ue_table[index].ue_tb_params.tb_tokens = ue_table[index].ue_tb_params.tb_depth;
+        ue_table[index].ue_tb_params.last_cycle = cur_cycles;
+        return;
+    }
+    UTLT_Error("UE IP not found in the table");
+    return;
+    
+}
+
+
 
 
 uint64_t seid = 0;
@@ -482,6 +523,41 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
         }
     }
     return pdr;
+}
+
+void *
+GetQerByUEIpAddress(uint32_t ue_ip, char *IP) {
+    if (findIndexByUeIpAddress(ue_ip) == -1) {        
+        UpfSession *session = UpfSessionFindByUeIP(ue_ip);
+        UTLT_Assert(session, return NULL, "session not found error");
+        UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
+        UTLT_Assert(session->pdr_list->len, return NULL, "PDR list contains 0 rules");
+
+        list_node_t *pnode = session->pdr_list->head;
+        list_node_t *qnode = NULL;
+        UpfPDR *pdr = NULL, *target_pdr = NULL;
+        uint32_t ambr = 0;
+        while (pnode) {
+            pdr = (UpfPDR *)pnode->val;
+            pnode = pnode->next;
+            for (int i =0;i<2;i++){
+                if (!pdr->qerId[i]) continue;
+                UpfQER * qer = UpfQERFindByID(session, pdr->qerId[i]);
+                if (ambr < qer->maximumBitrate.dl) {
+                    ambr = qer->maximumBitrate.dl;
+                }
+            }
+        }
+        if (ambr) {
+            UTLT_Warning("Add UE IP: %s, AMBR: %u", IP, ambr);
+            addEntrybyUeIp(ue_ip, ambr);
+            return NULL;
+        }
+    }
+    else {
+        UTLT_Trace("The UE IP already exists in the table");
+        return NULL;
+    }
 }
 
 UPDK_PDR *
@@ -745,6 +821,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         UTLT_Info("(%s) Time: %ld.%09ld\n", convertToIpAddress(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
         //  Step 2: Get PDR rule
         pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
+        GetQerByUEIpAddress(rte_cpu_to_be_32(iph->dst_addr), convertToIpAddress(iph->dst_addr));
         is_dl = true;
     }
 
@@ -801,11 +878,18 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
+        // check if the UE IP exists in the table and update the token
+        int index = findIndexByUeIpAddress(rte_cpu_to_be_32(iph->dst_addr));
+        if (index != -1) {
+            UTLT_Trace("Update token for UE IP: %s", convertToIpAddress(iph->dst_addr));
+            updateTokenbyIndex(index);
+        }
+        else {
+            UTLT_Error("No UE IP found in the table");
+            return status;
+        }
         // Step 1. Token Bucket (session)
-        struct onvm_nf *nf = nf_local_ctx->nf;
-        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
-        updateTbTokens(nf, tb_params);
-        if (tb_params->tb_tokens < pkt->pkt_len) {
+        if (ue_table[index].ue_tb_params.tb_tokens< pkt->pkt_len) {
             meta->action = ONVM_NF_ACTION_DROP;
             return status;
         }       
@@ -833,20 +917,20 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
 
         if (meta->flags == RTE_COLOR_GREEN) {
-            tb_params->tb_tokens -= cal_pktlen;
+            ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
             meta->action = ONVM_NF_ACTION_OUT;
         }
         
         if (meta->flags == RTE_COLOR_YELLOW) {
             if (isQos) {
-                if (tb_params->tb_tokens > pkt->pkt_len) {
-                    tb_params->tb_tokens -= cal_pktlen;
+                if (ue_table[index].ue_tb_params.tb_tokens> pkt->pkt_len) {
+                    ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
                     meta->action = ONVM_NF_ACTION_OUT;        
                 }
             }
             else {
-                if (tb_params->tb_tokens > 5 * pkt->pkt_len) {
-                    tb_params->tb_tokens -= cal_pktlen;
+                if (ue_table[index].ue_tb_params.tb_tokens> 5 * pkt->pkt_len) {
+                    ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
                     meta->action = ONVM_NF_ACTION_OUT;
                 }
             }
@@ -958,7 +1042,7 @@ main(int argc, char *argv[]) {
 
     // trTCM
     trtcmConfigFlowTables();
-    initTbParams(nf_local_ctx->nf);
+    initUeTable();
 
     UpfSessionPoolInit();
     UeIpToUpfSessionMapInit();
