@@ -180,7 +180,7 @@ parseMAC() {
     fclose(file);
 };
 
-#define MAX_OF_BUFFER_PACKET_SIZE 1600
+#define MAX_OF_BUFFER_PACKET_SIZE 30000
 struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
 uint32_t buffer_length = 0;
 
@@ -801,16 +801,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
     }
     AttachL2Header(pkt, is_dl);
     if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
-        // Step 1. Token Bucket (session)
-        struct onvm_nf *nf = nf_local_ctx->nf;
-        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
-        updateTbTokens(nf, tb_params);
-        if (tb_params->tb_tokens < pkt->pkt_len) {
-            meta->action = ONVM_NF_ACTION_DROP;
-            return status;
-        }       
-
-        // Step 2. trTCM (QoS flow)
+        // Step 1. trTCM (QoS flow)
         int key, fd_target, prefix_len;
         bool isQos = false;
         uint64_t curr_time = rte_get_tsc_cycles();
@@ -832,26 +823,24 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             meta->action = ONVM_NF_ACTION_DROP;
         }
 
+        // Step 2. Token Bucket (session)
+        struct onvm_nf *nf = nf_local_ctx->nf;
+        struct tb_config *tb_params = (struct tb_config *)nf_local_ctx->nf->data;
+        updateTbTokens(nf, tb_params);
+        if (tb_params->tb_tokens < pkt->pkt_len) {
+            meta->action = ONVM_NF_ACTION_DROP;
+            return status;
+        }
+
+        // Step 3. Forward        
         if (meta->flags == RTE_COLOR_GREEN) {
             tb_params->tb_tokens -= cal_pktlen;
             meta->action = ONVM_NF_ACTION_OUT;
         }
-        
-        if (meta->flags == RTE_COLOR_YELLOW) {
-            if (isQos) {
-                if (tb_params->tb_tokens > pkt->pkt_len) {
-                    tb_params->tb_tokens -= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;        
-                }
-            }
-            else {
-                if (tb_params->tb_tokens > 5 * pkt->pkt_len) {
-                    tb_params->tb_tokens -= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;
-                }
-            }
+        if (meta->flags == RTE_COLOR_YELLOW && tb_params->tb_tokens > 2 * cal_pktlen) {
+            tb_params->tb_tokens -= cal_pktlen;
+            meta->action = ONVM_NF_ACTION_OUT;        
         }
-
     }
     return status;
 }
@@ -891,16 +880,16 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     struct packet_buf *out_buf;
     nf = nf_local_ctx->nf;
 
-    // if (buffer_length > 0){
-    //     for (int i = 0; i < buffer_length; i++) {
-    //         meta = onvm_get_pkt_meta(buffer[i]);
-    //         meta->action = ONVM_NF_ACTION_OUT;
-    //     }
-    //     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
-    //     onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
-    //     UTLT_Debug("Sending out %u packets\n", buffer_length);
-    //     buffer_length = 0;
-    // }   
+    if (buffer_length > 0){
+        for (int i = 0; i < buffer_length; i++) {
+            meta = onvm_get_pkt_meta(buffer[i]);
+            meta->action = ONVM_NF_ACTION_OUT;
+        }
+        onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
+        onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
+        UTLT_Debug("Sending out %u packets\n", buffer_length);
+        buffer_length = 0;
+    }   
 
     if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
         last_p = cur_p;
