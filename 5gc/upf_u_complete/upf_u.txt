@@ -1,6 +1,6 @@
 # DN MAC Address
-3c:fd:fe:b4:fd:6d
+3c:fd:fe:b3:13:05
 # AN MAC Address
-3c:fd:fe:b0:ef:f4
+3c:fd:fe:ac:fb:0c
 # UPF ID Address
 192.168.1.2
