@@ -82,6 +82,7 @@
 #define APP_FLOWS_MAX 256
 #define IP_MASKED(BIGENDIINT, LEN) (BIGENDIINT & (0xFFFFFFFF << (32-LEN)))
 #define MAX_UE 256 // Max number of UEs
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 
 static struct rte_ether_addr dn_eth;
@@ -373,7 +374,10 @@ struct tb_config {
 struct ue_tb {
     uint32_t ue_ip;
     uint32_t ue_ambr;
-    struct tb_config ue_tb_params;
+    uint32_t ue_gbr;
+    uint32_t ue_mbr;
+    struct tb_config ue_nqos_tb_params;
+    struct tb_config ue_qos_tb_params;
 };
 
 struct ue_tb ue_table[MAX_UE];
@@ -383,11 +387,20 @@ initUeTable(){
     for (int i = 0; i < MAX_UE; i++) {
         ue_table[i].ue_ip = 0;
         ue_table[i].ue_ambr = 0;
-        ue_table[i].ue_tb_params.tb_rate = 0;
-        ue_table[i].ue_tb_params.tb_depth = 0;
-        ue_table[i].ue_tb_params.tb_tokens = 0;
-        ue_table[i].ue_tb_params.last_cycle = rte_get_tsc_cycles();
-        ue_table[i].ue_tb_params.cur_cycles = rte_get_tsc_cycles();
+        ue_table[i].ue_gbr = 0;
+        ue_table[i].ue_mbr = 0;
+
+        ue_table[i].ue_nqos_tb_params.tb_rate = 0;
+        ue_table[i].ue_nqos_tb_params.tb_depth = 0;
+        ue_table[i].ue_nqos_tb_params.tb_tokens = 0;
+        ue_table[i].ue_nqos_tb_params.last_cycle = rte_get_tsc_cycles();
+        ue_table[i].ue_nqos_tb_params.cur_cycles = rte_get_tsc_cycles();
+
+        ue_table[i].ue_qos_tb_params.tb_rate = 0;
+        ue_table[i].ue_qos_tb_params.tb_depth = 0;
+        ue_table[i].ue_qos_tb_params.tb_tokens = 0;
+        ue_table[i].ue_qos_tb_params.last_cycle = rte_get_tsc_cycles();
+        ue_table[i].ue_qos_tb_params.cur_cycles = rte_get_tsc_cycles();
     }
 }
 
@@ -403,15 +416,33 @@ findIndexByUeIpAddress(uint32_t ue_ip) {
     return index;
 }
 
-void 
-addEntrybyUeIp(uint32_t ue_ip, uint32_t ue_ambr) {
+void
+addEntrybyUeIp(uint32_t ue_ip, uint32_t ue_ambr, uint32_t ue_gbr,uint32_t ue_mbr) {
     for (int i = 0; i < MAX_UE; i++) {
         if (ue_table[i].ue_ip == 0) { // find unused
             ue_table[i].ue_ip = ue_ip;
             ue_table[i].ue_ambr = ue_ambr;
-            ue_table[i].ue_tb_params.tb_rate = ue_ambr/1000;
-            ue_table[i].ue_tb_params.tb_depth = ue_ambr;
-            ue_table[i].ue_tb_params.tb_tokens = ue_ambr; 
+            ue_table[i].ue_gbr = ue_gbr;
+
+            uint32_t qos_rate = MIN((ue_gbr + (ue_ambr-ue_gbr)/2), ue_mbr);
+
+            ue_table[i].ue_qos_tb_params.tb_rate = qos_rate/1000;
+            ue_table[i].ue_qos_tb_params.tb_depth = qos_rate;
+            ue_table[i].ue_qos_tb_params.tb_tokens = qos_rate;
+            ue_table[i].ue_qos_tb_params.last_cycle = rte_get_tsc_cycles();
+            ue_table[i].ue_qos_tb_params.cur_cycles = rte_get_tsc_cycles(); 
+            UTLT_Info("QoS Rate: %d", qos_rate);
+
+            uint32_t nqos_rate = ue_ambr - qos_rate;
+
+            ue_table[i].ue_nqos_tb_params.tb_rate = nqos_rate/1000;
+            ue_table[i].ue_nqos_tb_params.tb_depth = nqos_rate;
+            ue_table[i].ue_nqos_tb_params.tb_tokens = nqos_rate;
+            ue_table[i].ue_nqos_tb_params.last_cycle = rte_get_tsc_cycles();
+            ue_table[i].ue_nqos_tb_params.cur_cycles = rte_get_tsc_cycles();
+            UTLT_Info("non QoS Rate: %d", nqos_rate); 
+
+
             break;
         }
     }
@@ -426,12 +457,21 @@ updateTokenbyIndex(int index) {
         uint64_t tokens_produced;
         //
         cur_cycles = rte_get_tsc_cycles();
-        elapsed_cycles = cur_cycles - ue_table[index].ue_tb_params.last_cycle;
-        tokens_produced = (elapsed_cycles * ue_table[index].ue_tb_params.tb_rate * 125000) / rte_get_tsc_hz();
-        ue_table[index].ue_tb_params.tb_tokens += tokens_produced;
-        if (ue_table[index].ue_tb_params.tb_tokens > ue_table[index].ue_tb_params.tb_depth)
-            ue_table[index].ue_tb_params.tb_tokens = ue_table[index].ue_tb_params.tb_depth;
-        ue_table[index].ue_tb_params.last_cycle = cur_cycles;
+        elapsed_cycles = cur_cycles - ue_table[index].ue_nqos_tb_params.last_cycle;
+
+        tokens_produced = (elapsed_cycles * ue_table[index].ue_nqos_tb_params.tb_rate * 125000) / rte_get_tsc_hz();
+        ue_table[index].ue_nqos_tb_params.tb_tokens += tokens_produced;
+        if (ue_table[index].ue_nqos_tb_params.tb_tokens > ue_table[index].ue_nqos_tb_params.tb_depth)
+            ue_table[index].ue_nqos_tb_params.tb_tokens = ue_table[index].ue_nqos_tb_params.tb_depth;
+        ue_table[index].ue_nqos_tb_params.last_cycle = cur_cycles;
+
+        elapsed_cycles = cur_cycles - ue_table[index].ue_qos_tb_params.last_cycle;
+        tokens_produced = (elapsed_cycles * ue_table[index].ue_qos_tb_params.tb_rate * 125000) / rte_get_tsc_hz();
+        ue_table[index].ue_qos_tb_params.tb_tokens += tokens_produced;
+        if (ue_table[index].ue_qos_tb_params.tb_tokens > ue_table[index].ue_qos_tb_params.tb_depth)
+            ue_table[index].ue_qos_tb_params.tb_tokens = ue_table[index].ue_qos_tb_params.tb_depth;
+        ue_table[index].ue_qos_tb_params.last_cycle = cur_cycles;
+
         return;
     }
     UTLT_Error("UE IP not found in the table");
@@ -505,7 +545,7 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                     UTLT_Info("Find MBR (DL: %lu) in QERs", qer->maximumBitrate.dl);
                     trtcm_params.pir = qer->maximumBitrate.dl * 1000 / 8;
                     if (qer->flags.guaranteedBitrate) {
-                        UTLT_Warning("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
+                        UTLT_Info("Find GBR (DL: %lu) in QERs", qer->guaranteedBitrate.dl);
                         trtcm_params.cir = qer->guaranteedBitrate.dl * 1000 / 8;
                         rte_meter_trtcm_profile_config(&app_flow_trtcm_profile, &trtcm_params);
                         rte_meter_trtcm_config(&app_flows[trTCMidx], &app_flow_trtcm_profile);
@@ -537,20 +577,28 @@ GetQerByUEIpAddress(uint32_t ue_ip, char *IP) {
         list_node_t *qnode = NULL;
         UpfPDR *pdr = NULL, *target_pdr = NULL;
         uint32_t ambr = 0;
+        uint32_t gbr = 0;
+        uint32_t mbr = 0;
+
         while (pnode) {
             pdr = (UpfPDR *)pnode->val;
             pnode = pnode->next;
             for (int i =0;i<2;i++){
                 if (!pdr->qerId[i]) continue;
                 UpfQER * qer = UpfQERFindByID(session, pdr->qerId[i]);
+
                 if (ambr < qer->maximumBitrate.dl) {
                     ambr = qer->maximumBitrate.dl;
+                }
+                if (qer->flags.guaranteedBitrate && qer->flags.maximumBitrate) {
+                    gbr = qer->guaranteedBitrate.dl;
+                    mbr = qer->maximumBitrate.dl;
                 }
             }
         }
         if (ambr) {
-            UTLT_Warning("Add UE IP: %s, AMBR: %u", IP, ambr);
-            addEntrybyUeIp(ue_ip, ambr);
+            UTLT_Warning("Add UE IP: %s, AMBR: %u GBR: %u, MBR: %u" , IP, ambr, gbr, mbr);
+            addEntrybyUeIp(ue_ip, ambr, gbr, mbr);
             return NULL;
         }
     }
@@ -888,13 +936,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             UTLT_Error("No UE IP found in the table");
             return status;
         }
-        // Step 1. Token Bucket (session)
-        if (ue_table[index].ue_tb_params.tb_tokens< pkt->pkt_len) {
-            meta->action = ONVM_NF_ACTION_DROP;
-            return status;
-        }       
-
-        // Step 2. trTCM (QoS flow)
+        // Step 1. trTCM (QoS flow)
         int key, fd_target, prefix_len;
         bool isQos = false;
         uint64_t curr_time = rte_get_tsc_cycles();
@@ -910,32 +952,37 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             color_result = trtcmColorHandle(cal_pktlen, curr_time, ftSearch(key), trtcm_profile);
             if (trtcmPolicer(meta, color_result) > 0)
                 UTLT_Error("trTCM Policer error");
-        } 
-        else {
-            meta->flags = RTE_COLOR_YELLOW;
-            meta->action = ONVM_NF_ACTION_DROP;
-        }
-
-        if (meta->flags == RTE_COLOR_GREEN) {
-            ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
-            meta->action = ONVM_NF_ACTION_OUT;
         }
         
-        if (meta->flags == RTE_COLOR_YELLOW) {
-            if (isQos) {
-                if (ue_table[index].ue_tb_params.tb_tokens> pkt->pkt_len) {
-                    ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;        
-                }
+        // Step 2. bucket (QoS flow)
+        if(isQos){
+            if(meta->flags == RTE_COLOR_RED){
+                meta->action = ONVM_NF_ACTION_DROP;
             }
-            else {
-                if (ue_table[index].ue_tb_params.tb_tokens> 5 * pkt->pkt_len) {
-                    ue_table[index].ue_tb_params.tb_tokens-= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;
+            if (meta->flags == RTE_COLOR_GREEN) {
+                ue_table[index].ue_qos_tb_params.tb_tokens-= cal_pktlen;
+                meta->action = ONVM_NF_ACTION_OUT;
+            }
+            if (meta->flags == RTE_COLOR_YELLOW) {
+                if (ue_table[index].ue_qos_tb_params.tb_tokens > 2 * pkt->pkt_len) {
+                    ue_table[index].ue_qos_tb_params.tb_tokens-= cal_pktlen;
+                    meta->action = ONVM_NF_ACTION_OUT;      
+                }
+                else{
+                    meta->action = ONVM_NF_ACTION_DROP;
                 }
             }
         }
-
+        // Step 2. bucket (non QoS flow)
+        else{
+            if (ue_table[index].ue_nqos_tb_params.tb_tokens > pkt->pkt_len) {
+                    ue_table[index].ue_nqos_tb_params.tb_tokens-= cal_pktlen;
+                    meta->action = ONVM_NF_ACTION_OUT;      
+            }
+            else{
+                meta->action = ONVM_NF_ACTION_DROP;
+            }
+        }
     }
     return status;
 }
@@ -984,7 +1031,7 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     //     onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
     //     UTLT_Debug("Sending out %u packets\n", buffer_length);
     //     buffer_length = 0;
-    // }   
+    // } 
 
     if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
         last_p = cur_p;
@@ -1009,7 +1056,7 @@ main(int argc, char *argv[]) {
     nf_function_table = onvm_nflib_init_nf_function_table();
     nf_function_table->pkt_handler = &packet_handler;
     nf_function_table->msg_handler = &msg_handler;
-    nf_function_table->user_actions = &callback_handler;
+    // nf_function_table->user_actions = &callback_handler;
 
     if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
         onvm_nflib_stop(nf_local_ctx);
