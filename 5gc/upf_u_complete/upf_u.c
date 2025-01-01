@@ -451,7 +451,7 @@ addEntrybyUeIp(uint32_t ue_ip, uint32_t ue_ambr, uint32_t ue_gbr,uint32_t ue_mbr
 
 void 
 updateTokenbyIndex(int index) {
-    if ( index > -1) {
+    if (index > -1) {
         uint64_t cur_cycles;
         uint64_t elapsed_cycles;
         uint64_t tokens_produced;
@@ -476,10 +476,7 @@ updateTokenbyIndex(int index) {
     }
     UTLT_Error("UE IP not found in the table");
     return;
-    
 }
-
-
 
 
 uint64_t seid = 0;
@@ -925,7 +922,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         UTLT_Trace("Action is unknown\n");
     }
     AttachL2Header(pkt, is_dl);
-    if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
+    if (meta->action == ONVM_NF_ACTION_OUT && is_dl) {
         // check if the UE IP exists in the table and update the token
         int index = findIndexByUeIpAddress(rte_cpu_to_be_32(iph->dst_addr));
         if (index != -1) {
@@ -936,6 +933,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             UTLT_Error("No UE IP found in the table");
             return status;
         }
+
         // Step 1. trTCM (QoS flow)
         int key, fd_target, prefix_len;
         bool isQos = false;
@@ -955,33 +953,31 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
         
         // Step 2. bucket (QoS flow)
-        if(isQos){
-            if(meta->flags == RTE_COLOR_RED){
+        if (isQos) {
+            if (meta->flags == RTE_COLOR_RED) {
                 meta->action = ONVM_NF_ACTION_DROP;
             }
             if (meta->flags == RTE_COLOR_GREEN) {
-                ue_table[index].ue_qos_tb_params.tb_tokens-= cal_pktlen;
+                ue_table[index].ue_qos_tb_params.tb_tokens -= cal_pktlen;
                 meta->action = ONVM_NF_ACTION_OUT;
             }
             if (meta->flags == RTE_COLOR_YELLOW) {
-                if (ue_table[index].ue_qos_tb_params.tb_tokens > 2 * pkt->pkt_len) {
-                    ue_table[index].ue_qos_tb_params.tb_tokens-= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;      
+                while (ue_table[index].ue_qos_tb_params.tb_tokens < cal_pktlen) {
+                    updateTokenbyIndex(index);
+                    usleep(1);
                 }
-                else{
-                    meta->action = ONVM_NF_ACTION_DROP;
-                }
+                ue_table[index].ue_qos_tb_params.tb_tokens -= cal_pktlen;
+                meta->action = ONVM_NF_ACTION_OUT;      
             }
         }
         // Step 2. bucket (non QoS flow)
-        else{
-            if (ue_table[index].ue_nqos_tb_params.tb_tokens > pkt->pkt_len) {
-                    ue_table[index].ue_nqos_tb_params.tb_tokens-= cal_pktlen;
-                    meta->action = ONVM_NF_ACTION_OUT;      
+        else {
+            while (ue_table[index].ue_nqos_tb_params.tb_tokens < cal_pktlen) {
+                updateTokenbyIndex(index);
+                usleep(1);
             }
-            else{
-                meta->action = ONVM_NF_ACTION_DROP;
-            }
+            ue_table[index].ue_nqos_tb_params.tb_tokens -= cal_pktlen;
+            meta->action = ONVM_NF_ACTION_OUT;
         }
     }
     return status;
@@ -1022,16 +1018,6 @@ callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
     struct packet_buf *out_buf;
     nf = nf_local_ctx->nf;
 
-    if (buffer_length > 0){
-        for (int i = 0; i < buffer_length; i++) {
-            meta = onvm_get_pkt_meta(buffer[i]);
-            meta->action = ONVM_NF_ACTION_OUT;
-        }
-        onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
-        onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
-        UTLT_Debug("Sending out %u packets\n", buffer_length);
-        buffer_length = 0;
-    }   
     // if (buffer_length > 0){
     //     for (int i = 0; i < buffer_length; i++) {
     //         meta = onvm_get_pkt_meta(buffer[i]);
