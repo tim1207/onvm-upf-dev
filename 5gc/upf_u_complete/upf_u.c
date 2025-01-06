@@ -182,7 +182,7 @@ parseMAC() {
     fclose(file);
 };
 
-#define MAX_OF_BUFFER_PACKET_SIZE 1600
+#define MAX_OF_BUFFER_PACKET_SIZE 30000
 struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
 uint32_t buffer_length = 0;
 
@@ -925,7 +925,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         UTLT_Trace("Action is unknown\n");
     }
     AttachL2Header(pkt, is_dl);
-    if (meta->action == ONVM_NF_ACTION_OUT && is_dl){
+    if (meta->action == ONVM_NF_ACTION_OUT && is_dl) {
         // check if the UE IP exists in the table and update the token
         int index = findIndexByUeIpAddress(rte_cpu_to_be_32(iph->dst_addr));
         if (index != -1) {
@@ -955,8 +955,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         }
         
         // Step 2. bucket (QoS flow)
-        if(isQos){
-            if(meta->flags == RTE_COLOR_RED){
+        if(isQos) {
+            if(meta->flags == RTE_COLOR_RED) {
                 meta->action = ONVM_NF_ACTION_DROP;
             }
             if (meta->flags == RTE_COLOR_GREEN) {
@@ -976,7 +976,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         // Step 2. bucket (non QoS flow)
         else{
             if (ue_table[index].ue_nqos_tb_params.tb_tokens > pkt->pkt_len) {
-                    ue_table[index].ue_nqos_tb_params.tb_tokens-= cal_pktlen;
+                    ue_table[index].ue_nqos_tb_params.tb_tokens -= cal_pktlen;
                     meta->action = ONVM_NF_ACTION_OUT;      
             }
             else{
