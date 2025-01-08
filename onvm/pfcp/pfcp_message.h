@@ -877,7 +877,7 @@ typedef struct _CreatePDR {
     OuterHeaderRemoval outerHeaderRemoval;
     FARID fARID;
     URRID uRRID;
-    QERID qERID;
+    QERID qERID[2];
     ActivatePredefinedRules activatePredefinedRules;
 } __attribute__((packed)) CreatePDR;
 
@@ -911,7 +911,7 @@ typedef struct _PFCPSessionModificationRequest {
     CreateQER createQER;
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
-    UpdatePDR updatePDR[2];
+    UpdatePDR updatePDR[4];
     UpdateFAR updateFAR[2];
     UpdateURR updateURR;
     UpdateQER updateQER;
