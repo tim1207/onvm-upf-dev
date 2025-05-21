@@ -775,7 +775,7 @@ typedef struct _UpdatePDR {
     Precedence precedence;
     PDI pDI;
     FARID fARID;
-    URRID uRRID;
+    URRID uRRID[4];
     QERID qERID;
     ActivatePredefinedRules activatePredefinedRules;
     DeactivatePredefinedRules deactivatePredefinedRules;
@@ -876,7 +876,7 @@ typedef struct _CreatePDR {
     PDI pDI;
     OuterHeaderRemoval outerHeaderRemoval;
     FARID fARID;
-    URRID uRRID;
+    URRID uRRID[4];
     QERID qERID[2];
     ActivatePredefinedRules activatePredefinedRules;
 } __attribute__((packed)) CreatePDR;
@@ -968,7 +968,7 @@ typedef struct _PFCPSessionEstablishmentRequest {
     FSEID cPFSEID;
     CreatePDR createPDR[4];
     CreateFAR createFAR[4];
-    CreateURR createURR;
+    CreateURR createURR[4];
     CreateQER createQER[4];
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;

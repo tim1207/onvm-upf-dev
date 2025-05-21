@@ -260,8 +260,8 @@ typedef struct {
     UPDK_FAR *far;
     UPDK_QER *qer;
     
-    // TODO: Need to handle multiple URR
-    uint32_t urrId;
+    // handle multiple URR
+    uint32_t urrId[4];
 
     // handle multiple QERs
     uint32_t qerId[2];

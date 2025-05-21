@@ -498,20 +498,25 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
         node = node->next;
         if (pdr->flags.pdi) {
             if (pdr->pdi.flags.sourceInterface) {
-                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
-                    continue;
-                }
-                if (!pdr->pdi.sdfFilter.flags.fd) { 
-                    target_pdr = pdr;
-                    continue;
-                }
-                char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
-                if (ip_str != NULL && ++ip_str) {
-                    iph = onvm_pkt_ipv4_hdr(pkt);
-                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
-                    if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) == pkt->port) {
+                    char *ip_str = strstr(pdr->pdi.sdfFilter.flowDescription, "from");
+                    if (ip_str != NULL) {
+                        ip_str += 5; // Skip "from "
+                        char *end_ptr = strchr(ip_str, ' ');
+                        if (end_ptr != NULL) {
+                            *end_ptr = '\0'; // Null-terminate the extracted IP
+                        }
+                        if (strlen(ip_str) > 5) {
+                            iph = onvm_pkt_ipv4_hdr(pkt);
+                            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                            if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                                target_pdr = pdr; // Use the found pdr
+                                break;
+                            }
+                        }
+                    }
+                    if(!target_pdr) {
                         target_pdr = pdr;
-                        break;
                     }
                 }
             }
@@ -606,7 +611,7 @@ GetQerByUEIpAddress(uint32_t ue_ip, char *IP) {
 }
 
 UPDK_PDR *
-GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
+GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
     UpfSession *session = UpfSessionFindByTeid(td);
     UTLT_Assert(session, return NULL, "session not found error");
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
@@ -621,21 +626,25 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
         node = node->next;
         if (pdr->flags.pdi) {
             if (pdr->pdi.flags.sourceInterface) {
-                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) != pkt->port) {
-                    continue;
-                }
-                if (!pdr->pdi.sdfFilter.flags.fd) {
-                    target_pdr = pdr;
-                    continue;
-                }
-                char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
-                if (ip_str != NULL && ++ip_str) {
-                    // TODO: judge the inner IP pkt
-                    iph = onvm_pkt_ipv4_hdr(pkt);
-                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
-                    if (IP_MASKED(iph->dst_addr, prefix_len) == fd_target) {
+                if (SourceInterfaceToPort(pdr->pdi.sourceInterface) == pkt->port) {
+                    char *ip_str = strstr(pdr->pdi.sdfFilter.flowDescription, "from");
+                    if (ip_str != NULL) {
+                        ip_str += 5; // Skip "from "
+                        char *end_ptr = strchr(ip_str, ' ');
+                        if (end_ptr != NULL) {
+                            *end_ptr = '\0'; // Null-terminate the extracted IP
+                        }
+                        if (strlen(ip_str) > 5) {
+                            iph = onvm_pkt_ipv4_hdr(pkt);
+                            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                            if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                                target_pdr = pdr; // Use the found pdr
+                                break;
+                            }
+                        }
+                    }
+                    if(!target_pdr) {
                         target_pdr = pdr;
-                        break;
                     }
                 }
             }
@@ -939,13 +948,20 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         bool isQos = false;
         uint64_t curr_time = rte_get_tsc_cycles();
         struct rte_meter_trtcm_profile *trtcm_profile = NULL;
-        if (pdr->pdi.flags.sdfFilter) {
-            isQos = true;
-            char *ip_str = strrchr(pdr->pdi.sdfFilter.flowDescription, ' ');
-            if (ip_str != NULL && ++ip_str) {
-                fd_target = charStr2MaskedIP(ip_str, &prefix_len);
-                trtcm_profile = &app_flow_trtcm_profile;
+
+        char *ip_str = strstr(pdr->pdi.sdfFilter.flowDescription, "from");
+        if (ip_str != NULL) {
+            ip_str += 5; // Skip "from "
+            char *end_ptr = strchr(ip_str, ' ');
+            if (end_ptr != NULL) {
+                *end_ptr = '\0'; // Null-terminate the extracted IP
             }
+        }
+
+        if (ip_str != NULL && strcmp(ip_str, "any") != 0) {
+            isQos = true;
+            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+            trtcm_profile = &app_flow_trtcm_profile;
             key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
             color_result = trtcmColorHandle(cal_pktlen, curr_time, ftSearch(key), trtcm_profile);
             if (trtcmPolicer(meta, color_result) > 0)
@@ -1045,7 +1061,7 @@ main(int argc, char *argv[]) {
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
     // UTLT_SetLogLevel("Panic"); // to eliminate log print influenced jitter
-    UTLT_SetLogLevel("Warning"); // to eliminate log print influenced jitter
+    UTLT_SetLogLevel("warning"); // to eliminate log print influenced jitter
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);

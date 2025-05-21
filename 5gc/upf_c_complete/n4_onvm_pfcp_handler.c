@@ -193,14 +193,12 @@ Status _ConvertCreatePDRTlvToRule(UpfPDR *upfPdr, CreatePDR *createPdr) {
         UTLT_Debug("PDR FAR ID: %u", upfPdr->farId);
     }
 
-    if (createPdr->uRRID.presence) {
-        // TODO: Need to handle multiple URR
-        /*
-        upfPdr->flags.urrId = 1;
-        upfPdr->urrId = ntohl(*((uint32_t *)createPdr->uRRID.value));
-        UTLT_Debug("PDR URR ID: %u", upfPdr->urrId);
-        */
-        UTLT_Warning("UPF do NOT support URR yet");
+    for (int i=0; i<4; i++) {
+        if (createPdr->uRRID[i].presence) {
+            upfPdr->flags.urrId = 1;
+            upfPdr->urrId[i] = ntohl(*((uint32_t *)createPdr->uRRID[i].value));
+            UTLT_Info("PDR URR ID: %u", upfPdr->urrId[i]);
+        }
     }
 
     for (int i=0; i<2; i++) {
@@ -674,14 +672,12 @@ Status _ConvertUpdatePDRTlvToRule(UpfPDR *upfPdr, UpdatePDR *updatePDR) {
         UTLT_Debug("PDR FAR ID: %u", upfPdr->farId);
     }
 
-    if (updatePDR->uRRID.presence) {
-        // TODO: Need to handle multiple URR
-        /*
-        upfPdr->flags.urrId = 1;
-        upfPdr->urrId = ntohl(*((uint32_t *)updatePDR->uRRID.value));
-        UTLT_Debug("PDR URR ID: %u", upfPdr->urrId);
-        */
-        UTLT_Warning("UPF do NOT support URR yet");
+    for (int i=0; i<4; i++) {
+        if (updatePDR->uRRID[i].presence) {
+            upfPdr->flags.urrId = 1;
+            upfPdr->urrId[i] = ntohl(*((uint32_t *)updatePDR->uRRID[i].value));
+            UTLT_Info("PDR URR ID: %u", upfPdr->urrId[i]);
+        }
     }
 
     if (updatePDR->qERID.presence) {
@@ -1062,6 +1058,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     //UTLT_Assert(pfcpXact->gtpXact, return,
     // "GTP Xact of pfcpXact error");
 
+    // Far
     for (int i=0; i<4; i++){
         if (request->createFAR[i].presence) {
             UTLT_Info("Create FAR [%d]", i);
@@ -1070,10 +1067,15 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
                         "Create FAR error");
         }
     }
-    
-    if (request->createURR.presence) {
-        // TODO
+
+    // URR
+    for (int i=0; i<4; i++){
+        if (request->createURR[i].presence) {
+            UTLT_Info("Create URR [%d]", i);
+        }
     }
+
+
     if (request->createBAR.presence) {
         // TODO
     }
