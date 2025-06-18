@@ -1152,13 +1152,52 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     PfcpHeader header;
     Bufblk *bufBlk;
 
+    UTLT_Info("UpfN4HandleSessionModificationRequest");
+
+    
+    
+    /* Remove PDR */
+    UTLT_Info("Remove PDR ID 4");
+    if (request->removePDR.presence) {
+        UTLT_Assert(request->removePDR.pDRID.presence == 1, ,
+                    "[PFCP] PdrId in removePDR not presence!");
+        status = UpfN4HandleRemovePdr(session, *(uint16_t*)
+                                      request->removePDR.pDRID.value);
+         UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                     "Modification: Remove PDR error");
+    }
+
     /* Create FAR */
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 4; i++) {
         if (request->createFAR[i].presence) {
             UTLT_Info("Create FAR[%d]", i);
             status = UpfN4HandleCreateFar(session, &request->createFAR[i]);
             UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
                         "Modification: Create FAR[%d] error",i);
+        }
+    }
+    
+    /* Create PDR */
+    for (int i = 0; i < 4; i++) {
+        if (request->createPDR[i].presence) {
+            UTLT_Info("Create PDR[%d]", i);
+            status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                        "Modification: Create PDR[%d] error",i);
+        }
+    }
+                                             
+
+    // The order of PDF should be the lastest
+    /* Update PDR */
+    for (int i = 0; i < 4; i++){
+        if (request->updatePDR[i].presence) {
+            UTLT_Info("Update PDR [%d]", i);
+            UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
+                        "[PFCP] PdrId in updatePDR not presence!");
+            status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
+            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
+                    "Modification: Update PDR[%d] error",i);
         }
     }
 
@@ -1169,16 +1208,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
                     "Modification: Create QER error");
     }
 
-    // The order of PDF should be the lastest
-    /* Create PDR */
-    for (int i = 0; i < 2; i++) {
-        if (request->createPDR[i].presence) {
-            UTLT_Info("Create PDR[%d]", i);
-            status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
-            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                        "Modification: Create PDR[%d] error",i);
-        }
-    }
+    
 
     /* Update FAR */    
     for (int i = 0; i < 2; i++) {
@@ -1202,19 +1232,6 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
                     "Modification: Update QER error");
     } 
 
-    // The order of PDF should be the lastest
-    /* Update PDR */
-    for (int i = 0; i < 4; i++){
-        if (request->updatePDR[i].presence) {
-            UTLT_Info("Update PDR [%d]", i);
-            UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
-                        "[PFCP] PdrId in updatePDR not presence!");
-            status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
-            UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Update PDR[%d] error",i);
-        }
-    }
-
     /* Remove FAR */
     if (request->removeFAR.presence) {
         UTLT_Assert(request->removeFAR.fARID.presence == 1, ,
@@ -1234,17 +1251,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
         UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
                     "Modification: Remove QER error");
     }
-    // The order of PDF should be the lastest
-    /* Remove PDR */
-    if (request->removePDR.presence) {
-        UTLT_Assert(request->removePDR.pDRID.presence == 1, ,
-                    "[PFCP] PdrId in removePDR not presence!");
-        status = UpfN4HandleRemovePdr(session, *(uint16_t*)
-                                      request->removePDR.pDRID.value);
-        UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
-                    "Modification: Remove PDR error");
-    }
-
+    
     /* Send Session Modification Response */
     memset(&header, 0, sizeof(PfcpHeader));
     header.type = PFCP_SESSION_MODIFICATION_RESPONSE;
@@ -1435,7 +1442,7 @@ Status UpfN4HandleHeartbeatRequest(PfcpXact *xact, HeartbeatRequest *request) {
     PfcpHeader header;
     Bufblk *bufBlk = NULL;
 
-    UTLT_Info("[PFCP] Heartbeat Request");
+    UTLT_Warning("[PFCP] Heartbeat Request");
 
     /* Send */
     memset(&header, 0, sizeof(PfcpHeader));
