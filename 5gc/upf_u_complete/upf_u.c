@@ -60,6 +60,7 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "rte_meter.h"
+#include "pdr.h"
 
 #define NF_TAG "upf_u"
 
@@ -92,6 +93,8 @@ static struct rte_ether_addr cn_ue_eth;
 uint8_t DnMac[RTE_ETHER_ADDR_LEN];
 uint8_t AnMac[RTE_ETHER_ADDR_LEN];
 int SELF_IP;
+HashMap* uplinkMap;
+HashMap* downlinkMap;
 
 char *
 convertToIpAddress(uint32_t big_endian_value) {
@@ -376,6 +379,8 @@ struct ue_tb {
     uint32_t ue_ambr;
     uint32_t ue_gbr;
     uint32_t ue_mbr;
+    unsigned long qos_total_pkt_length;
+    unsigned long nqos_total_pkt_length;
     struct tb_config ue_nqos_tb_params;
     struct tb_config ue_qos_tb_params;
 };
@@ -389,6 +394,8 @@ initUeTable(){
         ue_table[i].ue_ambr = 0;
         ue_table[i].ue_gbr = 0;
         ue_table[i].ue_mbr = 0;
+        ue_table[i].qos_total_pkt_length = 0;
+        ue_table[i].nqos_total_pkt_length = 0;
 
         ue_table[i].ue_nqos_tb_params.tb_rate = 0;
         ue_table[i].ue_nqos_tb_params.tb_depth = 0;
@@ -507,11 +514,11 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                             *end_ptr = '\0'; // Null-terminate the extracted IP
                         }
                         if (strlen(ip_str) > 5) {
-                            iph = onvm_pkt_ipv4_hdr(pkt);
-                            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
-                            if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                    iph = onvm_pkt_ipv4_hdr(pkt);
+                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                    if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
                                 target_pdr = pdr; // Use the found pdr
-                                break;
+                        break;
                             }
                         }
                     }
@@ -611,7 +618,7 @@ GetQerByUEIpAddress(uint32_t ue_ip, char *IP) {
 }
 
 UPDK_PDR *
-GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
+GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) { // ul
     UpfSession *session = UpfSessionFindByTeid(td);
     UTLT_Assert(session, return NULL, "session not found error");
     UTLT_Assert(session->pdr_list, return NULL, "PDR list not initialized");
@@ -635,11 +642,11 @@ GetPdrByTeid(struct rte_mbuf *pkt, uint32_t td) {
                             *end_ptr = '\0'; // Null-terminate the extracted IP
                         }
                         if (strlen(ip_str) > 5) {
-                            iph = onvm_pkt_ipv4_hdr(pkt);
-                            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                    iph = onvm_pkt_ipv4_hdr(pkt);
+                    fd_target = charStr2MaskedIP(ip_str, &prefix_len);
                             if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
                                 target_pdr = pdr; // Use the found pdr
-                                break;
+                        break;
                             }
                         }
                     }
@@ -827,6 +834,14 @@ AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 }
 
+// Statistics variables
+time_t last_report_time;  // Last report time
+
+// Initialize the timer
+void initializeTimer() {
+    last_report_time = time(NULL);
+}
+
 static int
 packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_local_ctx *nf_local_ctx) {
     if (pkt == NULL || meta == NULL) {
@@ -863,18 +878,35 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
         // extract TEID from
         // Step 2: Get PDR rule
         uint32_t teid = get_teid_gtp_packet(pkt, udp_header);
-        pdr = GetPdrByTeid(pkt, teid);
+
+        Node* uplinkNode = find(uplinkMap, &teid, 0);
+        if (uplinkNode) {
+            UTLT_Trace("Found in uplinkMap: teid is: %u\n", teid);
+            pdr = (UPDK_PDR *)uplinkNode->pdr;
+        } else {
+            pdr = GetPdrByTeid(pkt, teid);
+            insert(uplinkMap, &teid, pdr);
+            UTLT_Warning("Added new entry to uplinkMap: teid is: %u\n", teid);
+        }
 
     } else {
         // UTLT_Info("It is downlink, dst is %d\n", rte_cpu_to_be_32(iph->dst_addr));
         UTLT_Info("It is downlink, dst is %s\n", convertToIpAddress(iph->dst_addr));
+        IpPair ipPairKey;
+        ipPairKey.src_ip = rte_cpu_to_be_32(iph->src_addr);
+        ipPairKey.dst_ip = rte_cpu_to_be_32(iph->dst_addr);
 
-        struct timespec ts;
-        timespec_get(&ts, TIME_UTC);
-        // UTLT_Info("(%d) Time: %ld.%09ld\n", rte_cpu_to_be_32(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
-        UTLT_Info("(%s) Time: %ld.%09ld\n", convertToIpAddress(iph->dst_addr), ts.tv_sec, ts.tv_nsec);
-        //  Step 2: Get PDR rule
-        pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
+        Node* downlinkNode = find(downlinkMap, &ipPairKey, 0);
+        if (downlinkNode) {
+        UTLT_Trace("Found in downlinkMap: src_ip: %s, dst_ip: %s, PDR ID: %d\n", 
+                convertToIpAddress(iph->src_addr), convertToIpAddress(iph->dst_addr), downlinkNode->pdr->pdrId);
+            pdr = (UPDK_PDR *)downlinkNode->pdr;
+        } else {
+            pdr = GetPdrByUeIpAddress(pkt, rte_cpu_to_be_32(iph->dst_addr));
+            insert(downlinkMap, &ipPairKey, pdr);
+            UTLT_Warning("Added new entry to downlinkMap: src_ip: %s, dst_ip: %s, PDR ID: %d\n", 
+                    convertToIpAddress(iph->src_addr), convertToIpAddress(iph->dst_addr), pdr->pdrId);
+        }
         GetQerByUEIpAddress(rte_cpu_to_be_32(iph->dst_addr), convertToIpAddress(iph->dst_addr));
         is_dl = true;
     }
@@ -960,8 +992,8 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
 
         if (ip_str != NULL && strcmp(ip_str, "any") != 0) {
             isQos = true;
-            fd_target = charStr2MaskedIP(ip_str, &prefix_len);
-            trtcm_profile = &app_flow_trtcm_profile;
+                fd_target = charStr2MaskedIP(ip_str, &prefix_len);
+                trtcm_profile = &app_flow_trtcm_profile;
             key = (pdr->pdi.flags.sdfFilter) ? SourceInterfaceToPort(pdr->pdi.sourceInterface) + fd_target : SourceInterfaceToPort(pdr->pdi.sourceInterface);
             color_result = trtcmColorHandle(cal_pktlen, curr_time, ftSearch(key), trtcm_profile);
             if (trtcmPolicer(meta, color_result) > 0)
@@ -995,8 +1027,55 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta, struct onvm_nf_
             ue_table[index].ue_nqos_tb_params.tb_tokens -= cal_pktlen;
             meta->action = ONVM_NF_ACTION_OUT;
         }
+
+        if (isQos && meta->action == ONVM_NF_ACTION_OUT) {
+            packet_report(true, cal_pktlen, index);
+        }
+        else {
+            if (meta->action == ONVM_NF_ACTION_OUT) {
+                packet_report(false, cal_pktlen, index);
+            }
+        }
     }
     return status;
+}
+
+
+// packet_report function
+void packet_report(bool isQoS, int pkt_length, int index) {
+    // Get the current time
+    time_t current_time = time(NULL);
+
+    // Accumulate the packet length and count for QoS flow
+    if (isQoS && pkt_length > 0) { // QoS flow
+        ue_table[index].qos_total_pkt_length += pkt_length;
+    }
+    else {
+        // Non-QoS flow
+        ue_table[index].nqos_total_pkt_length += pkt_length;
+    }
+
+    // Output statistics report every second
+    if (difftime(current_time, last_report_time) >= 1.0) {
+        uint64_t qos_rate = ue_table[index].qos_total_pkt_length * 8 / 1000;
+
+        
+
+        // Update the last report time
+        last_report_time = current_time;
+
+        // Modify ue_nqos_tb_params in the UE Table
+        uint64_t ambr = ue_table[index].ue_ambr; // 10000
+        uint64_t nqos_rate = ambr - qos_rate;
+        ue_table[index].ue_nqos_tb_params.tb_rate = (nqos_rate + 500) / 1000;
+        ue_table[index].ue_nqos_tb_params.tb_depth = nqos_rate;
+
+        // UTLT_Info("QoS Rate: %lu kbps, Non-QoS Rate: %lu kbps", qos_rate, ue_table[index].ue_nqos_tb_params.tb_rate);
+
+        // Reset statistics variables
+        ue_table[index].qos_total_pkt_length = 0;
+        ue_table[index].nqos_total_pkt_length = 0;
+    }
 }
 
 void
@@ -1061,7 +1140,7 @@ main(int argc, char *argv[]) {
     struct onvm_nf_local_ctx *nf_local_ctx;
     struct onvm_nf_function_table *nf_function_table;
     // UTLT_SetLogLevel("Panic"); // to eliminate log print influenced jitter
-    UTLT_SetLogLevel("warning"); // to eliminate log print influenced jitter
+    UTLT_SetLogLevel("Warning"); // to eliminate log print influenced jitter
 
     nf_local_ctx = onvm_nflib_init_nf_local_ctx();
     onvm_nflib_start_signal_handler(nf_local_ctx, NULL);
@@ -1101,7 +1180,11 @@ main(int argc, char *argv[]) {
 
     // trTCM
     trtcmConfigFlowTables();
+
+    // init
     initUeTable();
+    initializeTimer();
+    initializePdrHashTables(&uplinkMap, &downlinkMap);
 
     UpfSessionPoolInit();
     UeIpToUpfSessionMapInit();
@@ -1110,6 +1193,8 @@ main(int argc, char *argv[]) {
     onvm_nflib_run(nf_local_ctx);
 
     onvm_nflib_stop(nf_local_ctx);
+    freeHashMap(&uplinkMap);
+    freeHashMap(&downlinkMap);
     printf("If we reach here, program is ending\n");
     return 0;
 }

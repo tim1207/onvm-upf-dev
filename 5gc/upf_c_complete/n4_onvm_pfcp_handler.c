@@ -1157,7 +1157,6 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     
     
     /* Remove PDR */
-    UTLT_Info("Remove PDR ID 4");
     if (request->removePDR.presence) {
         UTLT_Assert(request->removePDR.pDRID.presence == 1, ,
                     "[PFCP] PdrId in removePDR not presence!");
