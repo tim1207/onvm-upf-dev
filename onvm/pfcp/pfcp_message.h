@@ -912,7 +912,7 @@ typedef struct _PFCPSessionModificationRequest {
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
     UpdatePDR updatePDR[4];
-    UpdateFAR updateFAR[2];
+    UpdateFAR updateFAR[4];
     UpdateURR updateURR;
     UpdateQER updateQER;
     UpdateBARPFCPSessionModificationRequest updateBAR;
@@ -966,10 +966,10 @@ typedef struct _PFCPSessionEstablishmentRequest {
     unsigned long presence;
     NodeID nodeID;
     FSEID cPFSEID;
-    CreatePDR createPDR[4];
-    CreateFAR createFAR[4];
-    CreateURR createURR[4];
-    CreateQER createQER[4];
+    CreatePDR createPDR[6];
+    CreateFAR createFAR[6];
+    CreateURR createURR[6];
+    CreateQER createQER[6];
     CreateBAR createBAR;
     CreateTrafficEndpoint createTrafficEndpoint;
     PDNType pDNType;

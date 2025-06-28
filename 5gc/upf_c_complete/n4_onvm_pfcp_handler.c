@@ -1059,7 +1059,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     // "GTP Xact of pfcpXact error");
 
     // Far
-    for (int i=0; i<4; i++){
+    for (int i=0; i<6; i++){
         if (request->createFAR[i].presence) {
             UTLT_Info("Create FAR [%d]", i);
             status = UpfN4HandleCreateFar(session, &request->createFAR[i]);
@@ -1069,7 +1069,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     }
 
     // URR
-    for (int i=0; i<4; i++){
+    for (int i=0; i<6; i++){
         if (request->createURR[i].presence) {
             UTLT_Info("Create URR [%d]", i);
         }
@@ -1081,7 +1081,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
     }
     
     // Search for QERs
-    for(int i=0;i<4;i++){
+    for(int i=0;i<6;i++){
         if (request->createQER[i].presence) {
             UTLT_Info("Create QER [%d]", i);
             status = UpfN4HandleCreateQer(session, &request->createQER[i]);
@@ -1100,7 +1100,7 @@ Status UpfN4HandleSessionEstablishmentRequest(UpfSession *session, PfcpXact *pfc
 
     // The order of PDF should be the lastest
     // Handle createPDR request
-    for (int i=0; i<4; i++){
+    for (int i=0; i<6; i++){
         if (request->createPDR[i].presence) {
             UTLT_Info("Create PDR [%d]", i);
             status = UpfN4HandleCreatePdr(session, &request->createPDR[i]);
@@ -1194,7 +1194,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
             UTLT_Info("Update PDR [%d]", i);
             UTLT_Assert(request->updatePDR[i].pDRID.presence == 1, ,
                         "[PFCP] PdrId in updatePDR not presence!");
-            status = UpfN4HandleUpdatePdr(session, &request->updatePDR);
+            status = UpfN4HandleUpdatePdr(session, &request->updatePDR[i]);
             UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
                     "Modification: Update PDR[%d] error",i);
         }
@@ -1210,7 +1210,7 @@ Status UpfN4HandleSessionModificationRequest(UpfSession *session, PfcpXact *xact
     
 
     /* Update FAR */    
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 4; i++) {
         // UTLT_Info("Update FAR[%d] presence: %d", i, request->updateFAR[i].presence);
         if (request->updateFAR[i].presence) {
             UTLT_Info("Update FAR[%d]", i);
@@ -1441,7 +1441,7 @@ Status UpfN4HandleHeartbeatRequest(PfcpXact *xact, HeartbeatRequest *request) {
     PfcpHeader header;
     Bufblk *bufBlk = NULL;
 
-    UTLT_Warning("[PFCP] Heartbeat Request");
+    // UTLT_Warning("[PFCP] Heartbeat Request");
 
     /* Send */
     memset(&header, 0, sizeof(PfcpHeader));
@@ -1460,13 +1460,13 @@ Status UpfN4HandleHeartbeatRequest(PfcpXact *xact, HeartbeatRequest *request) {
     UTLT_Assert(status == STATUS_OK, return STATUS_ERROR,
                 "xact commit error");
 
-    UTLT_Info("[PFCP] Heartbeat Response");
+    // UTLT_Info("[PFCP] Heartbeat Response");
     return STATUS_OK;
 }
 
 Status UpfN4HandleHeartbeatResponse(PfcpXact *xact,
                                     HeartbeatResponse *response) {
     // if rsv response, nothing to do, else peer may be not alive
-    UTLT_Info("[PFCP] Heartbeat Response");
+    // UTLT_Info("[PFCP] Heartbeat Response");
     return STATUS_OK;
 }
