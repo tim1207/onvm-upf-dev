@@ -61,42 +61,41 @@
 #include "onvm_pkt_helper.h"
 #include "rte_meter.h"
 #include "pdr.h"
-
-#define NF_TAG "upf_u"
-
-// #if 0
-// #define SELF_IP RTE_IPV4(10, 100, 200, 3)
-// #else
-// #define SELF_IP 33622538  // 10.10.1.2
-
-// #endif
-
-#define SRC_INTF_ACCESS 0
-#define SRC_INTF_CORE 1
-#define SRC_INTF_SGI_LAN 2
-#define SRC_INTF_CP 3
-#define SRC_INTF_NUM (SRC_INTF_CP + 1)
-#define FIX_BUFFER
-#define DEFAULT_TB_RATE 10         // (Mbps)
-#define DEFAULT_TB_DEPTH 10000  // Max proceed length
-#define DEFAULT_TB_TOKENS 10000
-#define APP_FLOWS_MAX 256
-#define IP_MASKED(BIGENDIINT, LEN) (BIGENDIINT & (0xFFFFFFFF << (32-LEN)))
-#define MAX_UE 256 // Max number of UEs
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define SESSION_MAX_FLOW_RULE 5
-#define IS_DYNAMIC 0
+#include "upf_u.h"
 
 
 static struct rte_ether_addr dn_eth;
 static struct rte_ether_addr cn_dn_eth;
 static struct rte_ether_addr cn_ue_eth;
-
 uint8_t DnMac[RTE_ETHER_ADDR_LEN];
 uint8_t AnMac[RTE_ETHER_ADDR_LEN];
 int SELF_IP;
+
+struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
+uint32_t buffer_length = 0;
+
 HashMap* uplinkMap;
 HashMap* downlinkMap;
+
+
+struct rte_meter_trtcm_profile app_trtcm_profile;
+struct rte_meter_trtcm_profile app_flow_trtcm_profiles[APP_FLOWS_MAX];
+struct rte_meter_trtcm app_flows[APP_FLOWS_MAX];
+
+flow_entry_t iPFlows[APP_FLOWS_MAX];
+uint32_t iPFlowsLen = 0;
+uint32_t trTCMidx = 0; 
+
+
+struct ue_tb ue_table[MAX_UE];
+
+
+
+uint64_t seid = 0;
+uint16_t g_pdrId = 0;
+// Statistics variables
+time_t last_report_time;  // Last report time
+
 
 char *
 convertToIpAddress(uint32_t big_endian_value) {
@@ -187,10 +186,6 @@ parseMAC() {
     fclose(file);
 };
 
-#define MAX_OF_BUFFER_PACKET_SIZE 30000
-struct rte_mbuf *buffer[MAX_OF_BUFFER_PACKET_SIZE];
-uint32_t buffer_length = 0;
-
 static inline uint8_t
 SourceInterfaceToPort(uint8_t interface) {
     switch (interface) {
@@ -205,18 +200,6 @@ SourceInterfaceToPort(uint8_t interface) {
             return -1;
     }
 }
-
-
-/* trTCM */
-struct rte_meter_trtcm_params app_trtcm_params = {
-	.cir = 125000,    // bytes per secs
-	.pir = 625000,    // bytes per secs
-	.cbs = 2048,
-	.pbs = 2048
-};
-struct rte_meter_trtcm_profile app_trtcm_profile;
-struct rte_meter_trtcm_profile app_flow_trtcm_profiles[APP_FLOWS_MAX];
-struct rte_meter_trtcm app_flows[APP_FLOWS_MAX];
 
 static int
 trtcmConfigFlowTables(void){
@@ -291,15 +274,6 @@ trtcmPolicer(struct onvm_pkt_meta *meta, int color_result){
     return 0;
 }
 
-/* Flow Separation*/
-struct flow_entry {
-    uint32_t subnet;  // (Network & Mask_bits)
-    int flow_idx;     // maps to trTCM flows table
-    bool in_use;      // to track if the slot is occupied
-}typedef flow_entry_t;
-flow_entry_t iPFlows[APP_FLOWS_MAX];
-uint32_t iPFlowsLen = 0;
-uint32_t trTCMidx = 0; 
 
 uint32_t charStr2MaskedIP(char *str, uint32_t *prefix_val){
     char ip_str[INET_ADDRSTRLEN];
@@ -366,31 +340,6 @@ void ftInit() {
     }
 }
 
-/* Token Bucket */
-struct tb_config {
-    uint64_t tb_rate;    // rate at which tokens are generated (in MBps)
-    uint64_t tb_depth;   // depth of the token bucket (in bytes)
-    uint64_t tb_tokens;  // number of the tokens in the bucket at any given time (in bytes)
-    uint64_t last_cycle;
-    uint64_t cur_cycles;
-    uint16_t used;
-};
-
-struct ue_tb {
-    uint32_t ue_ip;
-    uint32_t ue_ambr;
-    uint32_t ue_pdr[SESSION_MAX_FLOW_RULE];
-    uint32_t ue_gbr[SESSION_MAX_FLOW_RULE];
-    uint32_t ue_mbr[SESSION_MAX_FLOW_RULE];
-    
-    unsigned long qos_total_pkt_length;
-    unsigned long nqos_total_pkt_length;
-    struct tb_config ue_nqos_tb_params;
-    struct tb_config ue_qos_tb_params[SESSION_MAX_FLOW_RULE];
-};
-
-struct ue_tb ue_table[MAX_UE];
-
 void 
 initUeTable(){
     UTLT_Info("Initialize UE table");
@@ -418,11 +367,6 @@ initUeTable(){
         ue_table[i].ue_nqos_tb_params.cur_cycles = rte_get_tsc_cycles();
     }
 }
-
-struct index_Pair{
-    int x_index;
-    int y_index;
-};
 
 struct index_Pair 
 findIndexByUeIpAddress(uint32_t ue_ip, uint16_t pdr) {
@@ -573,10 +517,6 @@ updateTokenbyIndex(int x_index, int y_index) {
 }
 
 
-uint64_t seid = 0;
-uint16_t g_pdrId = 0;
-
-
 UPDK_PDR *
 GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
     UpfSession *session = UpfSessionFindByUeIP(ue_ip);
@@ -586,9 +526,9 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
 
     list_node_t *node = session->pdr_list->head;
     UpfPDR *pdr = NULL, *target_pdr = NULL;
-    struct rte_ipv4_hdr *iph = NULL;
+    struct rte_ipv4_hdr *iph = onvm_pkt_ipv4_hdr(pkt);
     uint32_t prefix_len = 0, fd_target = 0;
-    // Maybe should use another to get target pdr
+
     while (node) {
         pdr = (UpfPDR *)node->val;
         node = node->next;
@@ -602,8 +542,13 @@ GetPdrByUeIpAddress(struct rte_mbuf *pkt, uint32_t ue_ip) { // dl
                         if (end_ptr != NULL) {
                             *end_ptr = '\0'; // Null-terminate the extracted IP
                         }
-                        if (strlen(ip_str) > 5) {
-                            iph = onvm_pkt_ipv4_hdr(pkt);
+                        if (strcmp(ip_str, "any") == 0) {
+                            fd_target = charStr2MaskedIP(strcat(convertToIpAddress(iph->src_addr), "/0"), &prefix_len);
+                            if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
+                                    target_pdr = pdr; // Use the found pdr
+                            }
+                        } 
+                        else {
                             fd_target = charStr2MaskedIP(ip_str, &prefix_len);
                             if (IP_MASKED(iph->src_addr, prefix_len) == fd_target) {
                                     target_pdr = pdr; // Use the found pdr
@@ -905,8 +850,6 @@ AttachL2Header(struct rte_mbuf *pkt, bool is_dl) {
     eth_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
 }
 
-// Statistics variables
-time_t last_report_time;  // Last report time
 
 // Initialize the timer
 void initializeTimer() {
@@ -1182,37 +1125,6 @@ msg_handler(void *msg_data, struct onvm_nf_local_ctx *nf_local_ctx) {
     buffer_length = 0;
 }
 
-uint64_t last_p = NULL;
-static int 
-callback_handler(struct onvm_nf_local_ctx *nf_local_ctx) {
-    if (unlikely(!last_p)) last_p = rte_get_tsc_cycles();
-    uint64_t cur_p = rte_get_tsc_cycles(), before;
-    struct onvm_nf *nf;
-    struct onvm_pkt_meta *meta;
-    struct packet_buf *out_buf;
-    nf = nf_local_ctx->nf;
-
-    // if (buffer_length > 0){
-    //     for (int i = 0; i < buffer_length; i++) {
-    //         meta = onvm_get_pkt_meta(buffer[i]);
-    //         meta->action = ONVM_NF_ACTION_OUT;
-    //     }
-    //     onvm_pkt_process_tx_batch(nf->nf_tx_mgr, buffer, buffer_length, nf);
-    //     onvm_pkt_enqueue_tx_thread(nf->nf_tx_mgr->to_tx_buf, nf);
-    //     UTLT_Debug("Sending out %u packets\n", buffer_length);
-    //     buffer_length = 0;
-    // } 
-
-    if (unlikely((cur_p - last_p)/(double)rte_get_timer_hz() > 1)){
-        last_p = cur_p;
-        UTLT_Debug("Stats perform: ");
-        UTLT_Debug("act out: %d", nf->stats.act_out);
-        UTLT_Debug("buffered: %d", nf->stats.tx_buffer);
-    }
-
-    return 0;
-}
-
 int
 main(int argc, char *argv[]) {
     int arg_offset;
@@ -1226,7 +1138,6 @@ main(int argc, char *argv[]) {
     nf_function_table = onvm_nflib_init_nf_function_table();
     nf_function_table->pkt_handler = &packet_handler;
     nf_function_table->msg_handler = &msg_handler;
-    // nf_function_table->user_actions = &callback_handler;
 
     if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, nf_local_ctx, nf_function_table)) < 0) {
         onvm_nflib_stop(nf_local_ctx);
